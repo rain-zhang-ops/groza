@@ -58,6 +58,38 @@ def main():
     json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     done("menu-zh 菜单统一中文")
 
+    # ---- 2b. PWA Service Worker 策略 ----
+    #   /api        -> NetworkOnly（保证库存/流水实时，不被缓存落后）
+    #   导航请求    -> NetworkFirst(3s)（新壳优先，离线回退缓存）
+    #   哈希资源    -> CacheFirst（内容寻址，长缓存）
+    rep(f"{fe}/nuxt.config.ts",
+        '''      runtimeCaching: [
+        {
+          urlPattern: /^\\/api/,
+          handler: "NetworkFirst",
+          method: "GET",
+          options: {
+            cacheName: "api-cache",
+            cacheableResponse: { statuses: [0, 200] },
+            expiration: { maxAgeSeconds: 60 * 60 * 24 },
+          },
+        },
+      ],''',
+        '''      runtimeCaching: [
+        { urlPattern: /^\\/api/, handler: "NetworkOnly", method: "GET" },
+        {
+          urlPattern: ({ request }) => request.mode === "navigate",
+          handler: "NetworkFirst",
+          options: { cacheName: "pages", networkTimeoutSeconds: 3, expiration: { maxEntries: 10 } },
+        },
+        {
+          urlPattern: /\\/_nuxt\\/.*\\.(?:js|css|woff2?|png|jpg|jpeg|webp|svg)$/,
+          handler: "CacheFirst",
+          options: { cacheName: "assets", expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 30 } },
+        },
+      ],''',
+        "pwa-sw-strategy")
+
     # ---- 3. 侧边栏：/items 菜单并入 /ledger ----
     dv = f"{fe}/layouts/default.vue"
     rep(dv,
@@ -122,7 +154,8 @@ def main():
                         "\t\tr.Post(\"/ai/recognize\", chain.ToHandlerFunc(a.handleAIRecognize(), userMW...))\n"
                         "\t\tr.Get(\"/trash\", chain.ToHandlerFunc(a.handleTrashGet(), userMW...))\n"
                         "\t\tr.Put(\"/trash\", chain.ToHandlerFunc(a.handleTrashPut(), userMW...))\n"
-                        "\t\tr.Get(\"/audit\", chain.ToHandlerFunc(a.handleAuditGet(), userMW...))")
+                        "\t\tr.Get(\"/audit\", chain.ToHandlerFunc(a.handleAuditGet(), userMW...))\n"
+                        "\t\tr.Get(\"/metrics\", chain.ToHandlerFunc(a.handleMetrics(), userMW...))")
         if anchor not in s:
             fail("routes-ledger", "userMW 锚点未找到")
         else:

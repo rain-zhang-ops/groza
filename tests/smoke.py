@@ -31,10 +31,13 @@ def check(name, ok, detail=""):
     if not ok:
         fails.append(name)
 
-def req(path, token=None, method="GET", body=None):
+def req(path, token=None, method="GET", body=None, headers=None):
     r = urllib.request.Request(BASE + path, method=method)
     if token:
         r.add_header("Authorization", f"Bearer {token}")
+    if headers:
+        for k, v in headers.items():
+            r.add_header(k, v)
     data = None
     if body is not None:
         data = json.dumps(body).encode()
@@ -103,11 +106,16 @@ if token:
     check("创建测试物品", bool(eid), "" if eid else "跳过进销存业务测试")
 
     if eid:
-        st, b = req("/api/v1/biz/intake", token, "POST",
-                    {"supplier": "冒烟供应商", "note": "冒烟测试-入库",
-                     "items": [{"entityId": eid, "count": 3, "cost": 5}]})
+        ikey = "smoke-" + eid
+        ibody = {"supplier": "冒烟供应商", "note": "冒烟测试-入库",
+                 "items": [{"entityId": eid, "count": 3, "cost": 5}]}
+        st, b = req("/api/v1/biz/intake", token, "POST", ibody, headers={"Idempotency-Key": ikey})
         intake_id = json.loads(b).get("intake", {}).get("id") if st == 200 else None
         check("入库 /biz/intake", st == 200 and bool(intake_id), f"HTTP {st}")
+
+        st, b = req("/api/v1/biz/intake", token, "POST", ibody, headers={"Idempotency-Key": ikey})
+        replayed = st == 200 and json.loads(b).get("intake", {}).get("id") == intake_id
+        check("幂等重放 /biz/intake", replayed, f"HTTP {st}")
 
         st, b = req("/api/v1/biz/intakes", token)
         ok = st == 200 and any(it.get("id") == intake_id for it in json.loads(b))
@@ -130,6 +138,13 @@ if token:
         except Exception:
             arr = None
         check("审计日志 /audit", st == 200 and isinstance(arr, list), f"HTTP {st}")
+
+        st, b = req("/api/v1/metrics", token)
+        try:
+            met = json.loads(b)
+        except Exception:
+            met = {}
+        check("指标 /metrics", st == 200 and "items" in met, f"HTTP {st}")
 
 print()
 if fails:

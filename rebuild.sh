@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py; do
+for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
 
@@ -56,7 +56,7 @@ mkdir -p "$HOME_DIR/backups"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BK="$HOME_DIR/backups/custom-$STAMP"
 mkdir -p "$BK"
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py rebuild.sh; do
+for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py rebuild.sh; do
   cp -a "$HOME_DIR/$f" "$BK/$(basename $f)" 2>/dev/null || true
 done
 log "备份完成: $BK"
@@ -88,36 +88,41 @@ fi
 [ -n "$COMMIT" ] || die "无法解析 commit，请作为第二个参数传入"
 log "commit: $COMMIT"
 
-# ---------------- 下载源码（可复用加速：FRESH=1 强制重下）----------------
+# ---------------- 源码（后端始终重注入；前端可复用；FRESH=1 全量重下）----------------
 export GOPROXY="$GOPROXY_TENCENT" GOTOOLCHAIN=auto GOFLAGS=-mod=mod
 mkdir -p "$WORK/gocache" "$WORK/tmp"
 cd "$WORK"
-MARK="$WORK/.src-$VERSION-$COMMIT"
 REUSE_FE="$WORK/github.com/sysadminsmedia/homebox@$VERSION/frontend"
-if [ "${FRESH:-0}" != "1" ] && [ -f "$MARK" ] && [ -d "$WORK/backend/app" ] && [ -d "$REUSE_FE" ]; then
-  log "复用上次源码与依赖（加速）"
+
+# 后端：从模块缓存重新取干净源码（保证自定义路由补丁每次都完整应用）
+log "注入后端源码（模块缓存）"
+mkdir -p resolve && ( cd resolve && go mod init tmp >/dev/null 2>&1 || true )
+BE_DIR="$( cd resolve && go mod download -json "github.com/sysadminsmedia/homebox/backend@$COMMIT" )"
+BE_DIR="$( printf '%s' "$BE_DIR" | python3 -c 'import sys,json;print(json.load(sys.stdin)["Dir"])' )"
+rm -rf backend && cp -r "$BE_DIR" backend && chmod -R u+w backend
+
+# 前端：可复用（含 node_modules）以加速
+if [ "${FRESH:-0}" != "1" ] && [ -d "$REUSE_FE" ]; then
+  log "复用前端源码与依赖（加速）"
   FE_DIR="$REUSE_FE"
-  chmod -R u+w "$WORK/backend" "$FE_DIR" 2>/dev/null || true
+  chmod -R u+w "$FE_DIR" 2>/dev/null || true
 else
-  log "下载源码到 $WORK"
-  rm -rf "$WORK/backend" "$WORK/github.com" "$WORK/resolve" "$WORK/hb-src.zip" "$WORK/img" "$MARK" 2>/dev/null || true
-  mkdir -p resolve && ( cd resolve && go mod init tmp >/dev/null 2>&1 || true )
-  BE_DIR="$( cd resolve && go mod download -json "github.com/sysadminsmedia/homebox/backend@$COMMIT" )"
-  BE_DIR="$( printf '%s' "$BE_DIR" | python3 -c 'import sys,json;print(json.load(sys.stdin)["Dir"])' )"
-  cp -r "$BE_DIR" backend && chmod -R u+w backend
+  log "下载前端源码"
+  rm -rf "$WORK/github.com" "$WORK/hb-src.zip" "$WORK/.src-$VERSION-$COMMIT" 2>/dev/null || true
   curl -fsSL "https://mirrors.tencent.com/go/github.com/sysadminsmedia/homebox/@v/$VERSION.zip" -o hb-src.zip
   unzip -q hb-src.zip
   FE_DIR="github.com/sysadminsmedia/homebox@$VERSION/frontend"
   [ -d "$FE_DIR" ] || FE_DIR="$(find . -maxdepth 4 -type d -name frontend | head -1)"
   [ -n "$FE_DIR" ] && [ -d "$FE_DIR" ] || die "未找到 frontend 源码"
   FE_DIR="$PWD/$FE_DIR"
-  touch "$MARK"
 fi
 
 # ---------------- 注入定制文件 ----------------
 log "注入定制文件"
 cp "$HOME_DIR/ledger_api.go"   "$WORK/backend/app/api/ledger.go"
 cp "$HOME_DIR/audit.go"        "$WORK/backend/app/api/audit.go"
+cp "$HOME_DIR/idempotency.go" "$WORK/backend/app/api/idempotency.go"
+cp "$HOME_DIR/metrics.go"     "$WORK/backend/app/api/metrics.go"
 cp "$HOME_DIR/biz.go"          "$WORK/backend/app/api/biz.go"
 cp "$HOME_DIR/ai_recognize.go" "$WORK/backend/app/api/ai_recognize.go"
 cp "$HOME_DIR/ui_options.go"   "$WORK/backend/app/api/ui_options.go"

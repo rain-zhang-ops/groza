@@ -131,9 +131,11 @@
     const list = cartList.value.map(l => ({ entityId: l.entityId, count: Math.round(l.count) || 0, cost: l.cost || 0, sell: l.sell || 0 }));
     if (!list.length || list.some(l => l.count <= 0)) { flash("先添加入库商品并填数量"); return; }
     saving.value = true;
+    const opId = (globalThis.crypto?.randomUUID?.() ?? (Date.now().toString(36) + Math.random().toString(36).slice(2)));
     try {
       const res = await $fetch<Record<string, any>>("/api/v1/biz/intake", {
         method: "POST",
+        headers: { "Idempotency-Key": opId },
         body: { supplier: supplier.value.trim(), note: note.value.trim(), items: list },
       });
       const errs = (res.errors as string[]) || [];
@@ -145,7 +147,7 @@
     } catch (e: any) {
       const st = e?.statusCode || e?.response?.status || 0;
       if (!st || st >= 500) {
-        oq.enqueue({ path: "/api/v1/biz/intake", method: "POST", body: { supplier: supplier.value.trim(), note: note.value.trim(), items: list }, label: `入库单 ${list.length} 款` });
+        oq.enqueue({ id: opId, path: "/api/v1/biz/intake", method: "POST", body: { supplier: supplier.value.trim(), note: note.value.trim(), items: list }, label: `入库单 ${list.length} 款` });
         flash("离线：入库单已排队，联网后自动提交");
         for (const k of Object.keys(items)) delete items[k];
         note.value = "";
@@ -161,7 +163,7 @@
     if (!window.confirm(`回滚入库单 ${t.id}？将把 ${t.items.length} 款商品库存减回去。`)) return;
     rollbackBusy.value = t.id;
     try {
-      await $fetch("/api/v1/biz/intake/rollback", { method: "POST", body: { intakeId: t.id } });
+      await $fetch("/api/v1/biz/intake/rollback", { method: "POST", headers: { "Idempotency-Key": `rb-${t.id}` }, body: { intakeId: t.id } });
       flash("入库单已回滚");
       await load();
     } catch (e) {

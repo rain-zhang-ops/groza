@@ -187,6 +187,10 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 		if len(body.Items) == 0 {
 			return validate.NewRequestError(fmt.Errorf("没有入库明细"), http.StatusBadRequest)
 		}
+		key := idemKey(r)
+		if cached, ok := idemLookup(key); ok {
+			return idemServe(w, cached)
+		}
 
 		ctx := services.NewContext(r.Context())
 		ii := &intake{
@@ -250,7 +254,9 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
 		auditLog("intake.create", map[string]any{"intakeId": ii.ID, "items": len(ii.Items), "supplier": ii.Supplier})
-		return server.JSON(w, http.StatusOK, map[string]any{"intake": ii, "errors": errs})
+		resp := map[string]any{"intake": ii, "errors": errs}
+		idemStore(key, resp)
+		return server.JSON(w, http.StatusOK, resp)
 	}
 }
 
@@ -265,6 +271,10 @@ func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 		var body intakeRollbackBody
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)
+		}
+		key := idemKey(r)
+		if cached, ok := idemLookup(key); ok {
+			return idemServe(w, cached)
 		}
 		is := loadIntakes()
 		idx := -1
@@ -325,7 +335,9 @@ func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
 		auditLog("intake.rollback", map[string]any{"intakeId": t.ID, "items": len(t.Items)})
-		return server.JSON(w, http.StatusOK, map[string]any{"intake": t, "errors": errs})
+		resp := map[string]any{"intake": t, "errors": errs}
+		idemStore(key, resp)
+		return server.JSON(w, http.StatusOK, resp)
 	}
 }
 
