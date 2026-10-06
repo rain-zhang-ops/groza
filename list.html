@@ -1,0 +1,40 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>本子台账</title>
+<style>
+ body{font-family:-apple-system,"Microsoft YaHei",sans-serif;margin:16px;color:#222}
+ h1{font-size:18px} .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin:12px 0}
+ label{display:block;font-size:12px;color:#666} select,input{padding:6px;min-width:150px}
+ table{border-collapse:collapse;width:100%;font-size:13px}
+ th,td{border:1px solid #ddd;padding:6px 8px;text-align:left;vertical-align:top}
+ th{background:#f5f5f5;cursor:default} tr:hover{background:#fafafa}
+ .n{color:#888;font-size:12px}
+</style></head><body>
+<h1>本子台账（离线快照，可筛选）</h1>
+<div class="bar">
+ <div><label>品牌</label><select id="brand"><option value="">全部</option></select></div>
+ <div><label>尺寸</label><select id="size"><option value="">全部</option></select></div>
+ <div><label>规格</label><select id="spec"><option value="">全部</option></select></div>
+ <div><label>颜色</label><select id="color"><option value="">全部</option></select></div>
+ <div><label>关键字</label><input id="q" placeholder="名称包含..."></div>
+ <div><button onclick="reset()">重置</button></div>
+</div>
+<div class="n" id="cnt"></div>
+<table><thead><tr><th>名称</th><th>品牌</th><th>尺寸</th><th>规格</th><th>颜色</th><th>数量</th><th>分类</th><th>图</th><th>ID</th></tr></thead>
+<tbody id="tb"></tbody></table>
+<script>
+const DATA=[{"name": "Happy 金属环 碟式活页环", "brand": "Happy", "size": "", "spec": "金属碟环(活页用),直径待补(常见1英寸/1.5英寸/2英寸)", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "8b2e6dc0-268a-4212-8cca-e295a061f3d8"}, {"name": "Happy Big 竖向 碟装", "brand": "Happy", "size": "Big (8.5\"x11\")", "spec": "周计划 竖向 碟式活页", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "6e4c71ef-f83e-4fac-8109-78afbcb35c9f"}, {"name": "Happy Classic 仪表盘 碟装", "brand": "Happy", "size": "Classic (7\"x9.25\")", "spec": "周计划 仪表盘 碟式活页", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "81fa30d8-59fb-4ec7-a4d0-5be767b8dfbc"}, {"name": "Happy Classic 竖向 碟装", "brand": "Happy", "size": "Classic (7\"x9.25\")", "spec": "周计划 竖向 碟式活页", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "c752b202-bc6c-45f3-a3c6-c92aca2e1923"}, {"name": "Happy Mini 竖向 碟装", "brand": "Happy", "size": "Mini (4.75\"x7\")", "spec": "周计划 竖向 碟式活页", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "544f217f-4d48-4f75-8286-cb5050ecb37b"}, {"name": "Happy Big 打孔器", "brand": "Happy", "size": "适配 Big 内页", "spec": "碟式活页打孔器(压孔式)", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "55577bf8-f2f2-4a89-9083-4f084d86edfb"}, {"name": "Happy Classic 打孔器", "brand": "Happy", "size": "适配 Classic 内页", "spec": "碟式活页打孔器(压孔式)", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "23904d80-ca16-4590-acb4-f6bf9cb520a6"}, {"name": "Happy Mini 打孔器", "brand": "Happy", "size": "适配 Mini 内页", "spec": "碟式活页打孔器(压孔式)", "color": "", "qty": 0, "loc": "Happy", "img": false, "id": "ba909035-5980-447c-b2a4-cabc70189631"}, {"name": "Pukka Pad A4 横线 线圈 粉色", "brand": "Pukka Pad", "size": "A4", "spec": "横线 8mm 线圈 200页 可撕页", "color": "粉色", "qty": 0, "loc": "Pukka Pad", "img": false, "id": "96e32261-6f4d-475e-9bdb-7305cdfb401e"}, {"name": "Pukka Pad A4 横线 线圈 蓝色", "brand": "Pukka Pad", "size": "A4", "spec": "横线 8mm 线圈 200页 可撕页", "color": "蓝色", "qty": 0, "loc": "Pukka Pad", "img": false, "id": "cdff63e4-84f9-4b8c-9e93-3ad639d59304"}, {"name": "Pukka Pad A4 横线 线圈 金属色", "brand": "Pukka Pad", "size": "A4", "spec": "横线 8mm 线圈 200页 可撕页", "color": "金属色", "qty": 0, "loc": "Pukka Pad", "img": false, "id": "982b7f8f-4d6b-40b3-8793-53cb9fdf8ccb"}, {"name": "Pukka Pad A4 横线 线圈 黑色", "brand": "Pukka Pad", "size": "A4", "spec": "横线 8mm 线圈 200页 可撕页", "color": "黑色", "qty": 0, "loc": "Pukka Pad", "img": false, "id": "ca268672-18fb-496c-9daf-5255bd5bee1c"}, {"name": "Pukka Pad A4 横线 胶装 黑色", "brand": "Pukka Pad", "size": "A4", "spec": "横线 8mm 硬壳胶装 192页 丝带书签", "color": "黑色", "qty": 0, "loc": "Pukka Pad", "img": false, "id": "d8b78e94-1538-497e-b8e9-4575066aa7d6"}, {"name": "Pukka Pad A5 主题分栏 线圈 黑色", "brand": "Pukka Pad", "size": "A5", "spec": "主题分栏 线圈 192页", "color": "黑色", "qty": 0, "loc": "Pukka Pad", "img": false, "id": "8cd38bd8-bc8b-4960-8766-e2ecf835af9e"}, {"name": "优品胜 PET 塑胶线圈 螺旋本", "brand": "优品胜", "size": "", "spec": "PET 塑胶线圈 螺旋本(OEM定制)", "color": "", "qty": 0, "loc": "优品胜", "img": false, "id": "2b65ed16-a53d-4af4-b794-afd0518c6526"}, {"name": "优品胜 双线圈 螺旋本", "brand": "优品胜", "size": "", "spec": "双线圈 螺旋本(OEM定制)", "color": "", "qty": 0, "loc": "优品胜", "img": false, "id": "f9bdf6ad-a303-4d2f-923b-767438b7f82f"}, {"name": "优品胜 胶装 本", "brand": "优品胜", "size": "", "spec": "胶装本 Perfect Bound(OEM定制)", "color": "", "qty": 0, "loc": "优品胜", "img": false, "id": "00e7c4ef-c499-424f-b83e-bd16c533eb95"}, {"name": "优品胜 金属单线圈 螺旋本", "brand": "优品胜", "size": "", "spec": "金属单线圈 螺旋本(OEM定制)", "color": "", "qty": 0, "loc": "优品胜", "img": false, "id": "fd613ca7-ecc3-4358-9681-8780b43432c9"}, {"name": "得力佳 Y-162523 皮面 黑色", "brand": "得力佳", "size": "25K(205×143mm)", "spec": "皮面本 商务(Y-162523)", "color": "黑色", "qty": 0, "loc": "得力佳", "img": true, "id": "fcf10e12-2638-4ff3-b46b-f1c587f862ad"}, {"name": "得力佳 25K 记事本 商务", "brand": "得力佳", "size": "25K(约205×143mm)", "spec": "记事本 商务", "color": "", "qty": 0, "loc": "得力佳", "img": false, "id": "c19f4330-d2c3-466a-9862-f1a1a594f189"}, {"name": "英瑞克 A4 点阵 大线圈", "brand": "英瑞克", "size": "A4", "spec": "点阵 大线圈(美式)", "color": "", "qty": 0, "loc": "英瑞克", "img": true, "id": "55964903-34fa-4c85-8a53-aa8b5fb273df"}, {"name": "英瑞克 B5 拍纸 卡通加厚", "brand": "英瑞克", "size": "B5", "spec": "拍纸/便签 加厚", "color": "卡通图案", "qty": 0, "loc": "英瑞克", "img": true, "id": "dbb1701e-44cc-4eaf-a4a9-f7550060d036"}];
+const F=["brand","size","spec","color"];
+function uniq(k){return [...new Set(DATA.map(d=>d[k]).filter(Boolean))].sort()}
+F.forEach(k=>{const s=document.getElementById(k);uniq(k).forEach(v=>{const o=document.createElement("option");o.value=v;o.textContent=v;s.appendChild(o)})});
+function render(){
+ const g=id=>document.getElementById(id).value;
+ const q=g("q").toLowerCase();
+ const rows=DATA.filter(d=>F.every(k=>!g(k)||d[k]===g(k)) && (!q||d.name.toLowerCase().includes(q)));
+ document.getElementById("cnt").textContent="命中 "+rows.length+" / "+DATA.length+" 条";
+ document.getElementById("tb").innerHTML=rows.map(d=>`<tr><td>${d.name}</td><td>${d.brand}</td><td>${d.size}</td><td>${d.spec}</td><td>${d.color||""}</td><td>${d.qty}</td><td>${d.loc}</td><td>${d.img?"Y":"-"}</td><td class="n">${d.id}</td></tr>`).join("");
+}
+F.concat(["q"]).forEach(k=>document.getElementById(k).addEventListener("input",render));
+function reset(){F.concat(["q"]).forEach(k=>document.getElementById(k).value="");render()}
+render();
+</script></body></html>

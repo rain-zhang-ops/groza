@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# push 前跑静态检查（ops/check.sh）
+exec "$(git rev-parse --show-toplevel)/ops/check.sh"

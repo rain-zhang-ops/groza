@@ -1,0 +1,15 @@
+# build / artifacts
+/build/
+/backups/
+/*.tar.gz
+*.log
+*.log.old-
+__pycache__/
+*.pyc
+
+# secrets / local creds
+/tests/smoke.env
+.env
+
+# node
+node_modules/
