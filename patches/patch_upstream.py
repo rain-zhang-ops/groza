@@ -22,7 +22,7 @@ def fail(name, why):
 
 def rep(path, old, new, name, done_msg=None):
     s = open(path, encoding="utf-8").read()
-    if new in s and old not in s:
+    if new in s:
         skip(name)
         return
     if old not in s:

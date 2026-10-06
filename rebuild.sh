@@ -160,6 +160,10 @@ for p in cands:
         s = open(p, encoding="utf-8").read()
     except OSError:
         continue
+    if new in s and old not in s:
+        hits += 1
+        print("already patched:", p)
+        continue
     if old in s:
         os.chmod(p, os.stat(p).st_mode | stat.S_IWUSR)
         open(p, "w", encoding="utf-8").write(s.replace(old, new, 1))
