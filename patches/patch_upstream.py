@@ -341,7 +341,8 @@ def main():
                         "\t\tr.Get(\"/gx/config\", chain.ToHandlerFunc(a.handleGxConfigGet(), userMW...))\n"
                         "\t\tr.Put(\"/gx/config\", chain.ToHandlerFunc(a.handleGxConfigPut(), userMW...))\n"
                         "\t\tr.Get(\"/gx/documents\", chain.ToHandlerFunc(a.handleGxDocuments(), userMW...))\n"
-                        "\t\tr.Get(\"/gx/me\", chain.ToHandlerFunc(a.handleGxMe(), userMW...))")
+                        "\t\tr.Get(\"/gx/me\", chain.ToHandlerFunc(a.handleGxMe(), userMW...))\n"
+                        "\t\tr.Post(\"/gx/adjust\", chain.ToHandlerFunc(a.handleGxAdjust(), userMW...))")
         if anchor not in s:
             fail("routes-ledger", "userMW 锚点未找到")
         else:

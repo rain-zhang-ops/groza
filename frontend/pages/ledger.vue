@@ -1662,18 +1662,29 @@
 
   // ---------- 盘点 ----------
   const countChanges = computed(() => rows.value.filter(r => r.count !== null && r.count !== r.qty));
-  async function submitCount() {
+  const countReport = ref<{ open: boolean; busy: boolean; rows: Array<{ name: string; expected: number; counted: number; diff: number }> }>({ open: false, busy: false, rows: [] });
+  function submitCount() {
     const changes = countChanges.value;
     if (!changes.length) { flash("没有盘点差异"); return; }
-    const items: UndoItem[] = changes.map(r => ({ row: r, field: "qty" as Field, prev: r.qty }));
-    for (const r of changes) {
-      try {
-        await $fetch(`/api/v1/entities/${r.id}`, { method: "PATCH", body: { quantity: Number(r.count) } });
-        r.qty = Number(r.count); r.count = null;
-      } catch (e) { flash("提交失败：" + ((e as Error)?.message ?? String(e))); return; }
-    }
-    recordUndo("盘点", items);
-    flash(`盘点已提交 ${changes.length} 条`);
+    countReport.value = {
+      open: true, busy: false,
+      rows: changes.map(r => ({ name: r.name, expected: Number(r.qty), counted: Number(r.count), diff: Number(r.count) - Number(r.qty) })),
+    };
+  }
+  async function confirmCount() {
+    const rep = countReport.value;
+    if (!rep.open) return;
+    const changes = countChanges.value;
+    rep.busy = true;
+    try {
+      const lines = changes.map(r => ({ itemId: r.id, counted: Number(r.count) }));
+      const res = await $fetch<Record<string, any>>("/api/v1/gx/adjust", { method: "POST", body: { note: `盘点 ${new Date().toISOString().slice(0, 10)}`, lines } });
+      for (const r of changes) { r.qty = Number(r.count); r.count = null; }
+      buzz(25);
+      flash(`盘点已提交：盘盈 ${res.gain ?? 0} · 盘亏 ${res.loss ?? 0}（单号 ${res.code ?? ""}）`);
+      countReport.value = { open: false, busy: false, rows: [] };
+      await load();
+    } catch (e) { flash("盘点提交失败：" + ((e as Error)?.message ?? String(e))); rep.busy = false; }
   }
   function diff(r: Row): number | null { return r.count === null ? null : Number(r.count) - r.qty; }
   function diffText(r: Row): string { const d = diff(r); return d === null ? "" : (d > 0 ? "+" : "") + d; }
@@ -2164,6 +2175,34 @@
             <div class="mt-4 flex items-center justify-end gap-2">
               <button :class="[btnGhost, 'active:scale-95']" :disabled="batchRunning" @click="cancelBatch">取消</button>
               <button :class="[btnPrimary, 'active:scale-95']" :disabled="batchRunning" @click="confirmBatch">{{ batchRunning ? "执行中…" : "确认执行" }}</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+      <!-- 盘点差异报告 -->
+      <Transition name="fold">
+        <div v-if="countReport.open" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" @click.self="countReport.open = false">
+          <div class="max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
+            <div class="mb-2 flex items-center gap-2">
+              <span class="font-semibold">盘点差异报告</span>
+              <span class="text-xs text-muted-foreground">共 {{ countReport.rows.length }} 条</span>
+              <button class="ml-auto rounded-lg p-1 text-muted-foreground hover:bg-muted" @click="countReport.open = false"><MdiClose class="h-5 w-5" /></button>
+            </div>
+            <p class="mb-2 text-xs text-muted-foreground">确认后将生成盘盈/盘亏调整单并更新库存。</p>
+            <div class="divide-y rounded-lg border text-sm">
+              <div class="flex items-center gap-2 bg-muted/40 p-2 text-xs text-muted-foreground">
+                <span class="min-w-0 flex-1">名称</span><span class="w-14 text-right">账面</span><span class="w-14 text-right">实盘</span><span class="w-14 text-right">差异</span>
+              </div>
+              <div v-for="(d, i) in countReport.rows" :key="i" class="flex items-center gap-2 p-2">
+                <span class="min-w-0 flex-1 truncate">{{ d.name }}</span>
+                <span class="w-14 text-right tabular-nums text-muted-foreground">{{ d.expected }}</span>
+                <span class="w-14 text-right tabular-nums">{{ d.counted }}</span>
+                <span class="w-14 text-right font-medium tabular-nums" :class="d.diff > 0 ? 'text-blue-600' : 'text-red-600'">{{ d.diff > 0 ? "+" : "" }}{{ d.diff }}</span>
+              </div>
+            </div>
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <button :class="[btnGhost, 'active:scale-95']" :disabled="countReport.busy" @click="countReport.open = false">取消</button>
+              <button :class="[btnPrimary, 'active:scale-95']" :disabled="countReport.busy" @click="confirmCount">{{ countReport.busy ? "提交中…" : "确认并生成调整单" }}</button>
             </div>
           </div>
         </div>

@@ -21,6 +21,8 @@ type gxDocLine struct {
 	ItemID   string
 	Qty      float64
 	UnitCost float64
+	Before   float64
+	After    float64
 }
 
 // gxRecordDocument 幂等写入一张单据（已存在同 kind+code 则跳过）。best-effort。
@@ -51,7 +53,7 @@ func gxRecordDocument(kind, code, party, note, status, ts string, lines []gxDocL
 	}
 	for _, l := range lines {
 		if _, err = tx.Exec(`INSERT INTO gx_document_line (id,document_id,item_id,qty,unit_cost,qty_before,qty_after)
-			VALUES (?,?,?,?,?,0,0)`, uuid.NewString(), docID, l.ItemID, l.Qty, l.UnitCost); err != nil {
+			VALUES (?,?,?,?,?,?,?)`, uuid.NewString(), docID, l.ItemID, l.Qty, l.UnitCost, l.Before, l.After); err != nil {
 			return
 		}
 	}
