@@ -5,6 +5,7 @@ package main
 // 仅用于 gx_ 侧车与部分危险端点；不改动 Homebox 核心鉴权。
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -49,4 +50,46 @@ func (a *app) handleGxMe() errchain.HandlerFunc {
 			"isOwner": owner,
 		})
 	}
+}
+
+// permAllowed：危险操作 owner 恒可；普通用户按 gx_config.permissions 判定（缺省允许）。
+func (a *app) permAllowed(r *http.Request, key string) (bool, error) {
+	owner, err := a.isOwner(r)
+	if err != nil {
+		return false, err
+	}
+	if owner {
+		return true, nil
+	}
+	db, err := gxOpen()
+	if err != nil {
+		return true, nil
+	}
+	defer db.Close()
+	var js string
+	if err := db.QueryRow(`SELECT json FROM gx_config WHERE id=1`).Scan(&js); err != nil {
+		return true, nil
+	}
+	var cfg struct {
+		Permissions map[string]bool `json:"permissions"`
+	}
+	if err := json.Unmarshal([]byte(js), &cfg); err != nil {
+		return true, nil
+	}
+	if v, ok := cfg.Permissions[key]; ok {
+		return v, nil
+	}
+	return true, nil
+}
+
+// requirePerm：key 不允许时返回 403。
+func (a *app) requirePerm(r *http.Request, key, msg string) error {
+	ok, err := a.permAllowed(r, key)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return validate.NewRequestError(fmt.Errorf("%s", msg), http.StatusForbidden)
+	}
+	return nil
 }

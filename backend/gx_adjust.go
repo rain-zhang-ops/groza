@@ -29,6 +29,9 @@ type gxAdjustBody struct {
 
 func (a *app) handleGxAdjust() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requirePerm(r, "editorCanAdjust", "无盘点权限"); err != nil {
+			return err
+		}
 		var body gxAdjustBody
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)

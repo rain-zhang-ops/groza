@@ -44,6 +44,7 @@
       { key: "package", name: "包装", required: false, multiple: false },
     ] },
     organization: { tagGroup: { name: "品类", options: [] }, series: { enabled: true, deriveFrom: ["name"], stripParentheses: true }, groupDims: ["品牌", "尺寸", "规格", "系列"] },
+    permissions: { editorCanIntake: true, editorCanOutbound: true, editorCanAdjust: true },
   };
 
   const cfg = reactive<any>(JSON.parse(JSON.stringify(DEFAULT)));
@@ -260,6 +261,15 @@
         </div>
         <label class="flex items-center gap-2 text-sm"><input v-model="cfg.organization.series.enabled" type="checkbox" class="size-4 accent-primary" /> 启用系列（按名称去括号派生）</label>
         <label class="flex items-center gap-2 text-sm"><input v-model="cfg.organization.series.stripParentheses" type="checkbox" class="size-4 accent-primary" /> 去除名称中的括号内容</label>
+      </section>
+
+      <!-- 权限 -->
+      <section class="space-y-2 rounded-md border bg-card p-4">
+        <span class="text-sm font-semibold">权限</span>
+        <p class="text-xs text-muted-foreground">管理员（owner）始终可用；以下控制普通成员（editor）可执行的操作。</p>
+        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanIntake" type="checkbox" class="size-4 accent-primary" /> 允许入库</label>
+        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanOutbound" type="checkbox" class="size-4 accent-primary" /> 允许出库</label>
+        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanAdjust" type="checkbox" class="size-4 accent-primary" /> 允许盘点</label>
       </section>
 
       <!-- 版本历史 -->

@@ -70,6 +70,17 @@
   });
   const total = computed(() => queues.value.reduce((a, q) => a + q.count, 0));
 
+  const lowStock = computed(() => items.value
+    .map(it => { const s = num(fv(it, "安全库存")) || 0; const q = Number(it.quantity || 0); return { id: it.id, name: it.name, q, s, suggest: Math.max(1, s - q) }; })
+    .filter(x => x.s > 0 && x.q <= x.s)
+    .sort((a, b) => (a.q - a.s) - (b.q - b.s)));
+
+  function copyRestock() {
+    const lines = [`补货清单 ${new Date().toLocaleDateString()}`, ...lowStock.value.map(x => `· ${x.name}  当前 ${x.q}/安全 ${x.s}  建议补 ${x.suggest}`)];
+    const txt = lines.join("\n");
+    navigator.clipboard?.writeText(txt).then(() => alert("已复制补货清单")).catch(() => window.prompt("复制：", txt));
+  }
+
   function go(q: { filter: string; q?: string }) {
     const params: Record<string, string> = {};
     if (q.filter) params.data = q.filter;
@@ -111,6 +122,26 @@
           </button>
         </section>
         <p class="mt-2 text-xs text-muted-foreground">点卡片直达台账对应筛选，可批量处理（差异预览→确认）并可撤销。</p>
+
+        <section class="mt-5 rounded-2xl border bg-card p-4 shadow-sm">
+          <div class="mb-2 flex items-center gap-2">
+            <MdiAlertOutline class="h-5 w-5 text-amber-600" />
+            <span class="text-sm font-semibold">补货草稿</span>
+            <span class="text-xs text-muted-foreground">低库存 {{ lowStock.length }} 款</span>
+            <div class="ml-auto flex items-center gap-2">
+              <button class="rounded-lg border bg-background px-2.5 py-1.5 text-xs transition hover:bg-muted active:scale-95" @click="copyRestock">复制清单</button>
+              <NuxtLink to="/intake" class="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90">去进货</NuxtLink>
+            </div>
+          </div>
+          <div v-if="!lowStock.length" class="py-4 text-center text-sm text-muted-foreground">暂无低库存</div>
+          <div v-else class="divide-y text-sm">
+            <div v-for="x in lowStock" :key="x.id" class="flex items-center gap-2 py-1.5">
+              <span class="min-w-0 flex-1 truncate">{{ x.name }}</span>
+              <span class="shrink-0 text-xs tabular-nums text-muted-foreground">当前 {{ x.q }} / 安全 {{ x.s }}</span>
+              <span class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs tabular-nums text-amber-600">建议补 {{ x.suggest }}</span>
+            </div>
+          </div>
+        </section>
 
         <section class="mt-5 rounded-2xl border bg-card p-4 shadow-sm">
           <div class="mb-2 flex items-center gap-2">

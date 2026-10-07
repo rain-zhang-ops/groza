@@ -181,6 +181,9 @@ type intakeBody struct {
 
 func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requirePerm(r, "editorCanIntake", "无入库权限"); err != nil {
+			return err
+		}
 		var body intakeBody
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)
@@ -468,6 +471,9 @@ type outboundBody struct {
 
 func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requirePerm(r, "editorCanOutbound", "无出库权限"); err != nil {
+			return err
+		}
 		var body outboundBody
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)
