@@ -36,8 +36,12 @@
   async function load() {
     loading.value = true; err.value = "";
     try {
-      const is = await $fetch<Array<Record<string, any>>>("/api/v1/biz/intakes");
-      intakes.value = (is || []) as Intake[];
+      const res = await $fetch<{ documents: Array<Record<string, any>> }>("/api/v1/gx/documents", { params: { kind: "intake", limit: 500 } });
+      intakes.value = (res.documents || []).map(d => ({
+        id: d.id, ts: d.ts, supplier: d.party, note: d.note,
+        items: (d.items || []).map((it: Record<string, any>) => ({ entityId: it.entityId, name: it.name, count: it.count, cost: it.cost })),
+        totalCost: d.totalCost, rolledBack: d.rolledBack,
+      })) as Intake[];
     } catch (e) { err.value = "加载失败：" + ((e as Error)?.message ?? String(e)); }
     finally { loading.value = false; }
   }

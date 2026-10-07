@@ -259,6 +259,13 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 			eids = append(eids, it.EntityID)
 		}
 		auditLog("intake.create", map[string]any{"intakeId": ii.ID, "items": len(ii.Items), "supplier": ii.Supplier, "entityIds": eids})
+		{
+			lines := make([]gxDocLine, 0, len(ii.Items))
+			for _, it := range ii.Items {
+				lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: float64(it.Count), UnitCost: float64(it.Cost)})
+			}
+			gxRecordDocument("intake", ii.ID, ii.Supplier, ii.Note, "posted", ii.TS, lines)
+		}
 		resp := map[string]any{"intake": ii, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)
@@ -344,6 +351,7 @@ func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 			eids = append(eids, it.EntityID)
 		}
 		auditLog("intake.rollback", map[string]any{"intakeId": t.ID, "items": len(t.Items), "entityIds": eids})
+		gxMarkRolledBack("intake", t.ID)
 		resp := map[string]any{"intake": t, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)
@@ -512,6 +520,13 @@ func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 			eids = append(eids, it.EntityID)
 		}
 		auditLog("outbound.create", map[string]any{"outboundId": ob.ID, "items": len(ob.Items), "reason": ob.Reason, "entityIds": eids})
+		{
+			lines := make([]gxDocLine, 0, len(ob.Items))
+			for _, it := range ob.Items {
+				lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: -float64(it.Count)})
+			}
+			gxRecordDocument("outbound", ob.ID, ob.Reason, ob.Note, "posted", ob.TS, lines)
+		}
 		resp := map[string]any{"outbound": ob, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)
@@ -578,6 +593,7 @@ func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
 			eids = append(eids, it.EntityID)
 		}
 		auditLog("outbound.rollback", map[string]any{"outboundId": t.ID, "items": len(t.Items), "entityIds": eids})
+		gxMarkRolledBack("outbound", t.ID)
 		resp := map[string]any{"outbound": t, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)

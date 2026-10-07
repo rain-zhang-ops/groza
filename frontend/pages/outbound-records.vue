@@ -35,8 +35,12 @@
   async function load() {
     loading.value = true; err.value = "";
     try {
-      const ob = await $fetch<Array<Record<string, any>>>("/api/v1/biz/outbounds");
-      outbounds.value = (ob || []) as Outbound[];
+      const res = await $fetch<{ documents: Array<Record<string, any>> }>("/api/v1/gx/documents", { params: { kind: "outbound", limit: 500 } });
+      outbounds.value = (res.documents || []).map(d => ({
+        id: d.id, ts: d.ts, reason: d.party, note: d.note,
+        items: (d.items || []).map((it: Record<string, any>) => ({ entityId: it.entityId, name: it.name, count: it.count })),
+        rolledBack: d.rolledBack,
+      })) as Outbound[];
     } catch (e) { err.value = "加载失败：" + ((e as Error)?.message ?? String(e)); }
     finally { loading.value = false; }
   }
