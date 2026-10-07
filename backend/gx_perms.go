@@ -52,7 +52,7 @@ func (a *app) handleGxMe() errchain.HandlerFunc {
 	}
 }
 
-// permAllowed：危险操作 owner 恒可；普通用户按 gx_config.permissions 判定（缺省允许）。
+// permAllowed：危险操作 owner 恒可；普通用户按当前集合 gx_group_config.permissions 判定（缺省允许）。
 func (a *app) permAllowed(r *http.Request, key string) (bool, error) {
 	owner, err := a.isOwner(r)
 	if err != nil {
@@ -61,13 +61,14 @@ func (a *app) permAllowed(r *http.Request, key string) (bool, error) {
 	if owner {
 		return true, nil
 	}
+	ctx := services.NewContext(r.Context())
 	db, err := gxOpen()
 	if err != nil {
 		return true, nil
 	}
 	defer db.Close()
 	var js string
-	if err := db.QueryRow(`SELECT json FROM gx_config WHERE id=1`).Scan(&js); err != nil {
+	if err := db.QueryRow(`SELECT json FROM gx_group_config WHERE group_id=?`, ctx.GID.String()).Scan(&js); err != nil {
 		return true, nil
 	}
 	var cfg struct {

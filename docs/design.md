@@ -404,3 +404,25 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 3. **P1**：媒体槽位、单据/盘点、审计/历史 UI、批量维护（改价/数量/库位）。
 4. **P2**：组织配置、权限、自动化（低库存→进货草稿）、图片找相似。
 - 全程：移动优先、默认不联网（AI 费用护栏）、可回退。
+
+---
+
+## 附录：实现落地记录（截至 main 7e93035）
+
+### 已交付
+- **M0 迁移**：`ops/migrate/{schema_v2.sql,migrate.py,migrate.sh}`；构建时 `--ensure` 幂等建表/补列/回填；生产已附加 `gx_` 表并回填。
+- **P0 配置**：`/api/v1/gx/config`(+history/restore)；前端「集合 → 配置」四维（属性/位置/媒体/组织/权限）；台账按配置派生必填与选项。
+- **P1**：批量「差异预览→确认」；媒体槽位（title=槽位、primary=封面）；统一单据 `GET /gx/documents`（biz 写入同步 gx_document）。
+- **P2**：组织配置生效（系列/分组维度/标签体系名）；权限检查点（危险操作 owner，editor 入库/出库/盘点可配）。
+- **待办中心** `/tasks`：缺图/缺价/缺库位/缺安全库存/低库存/缺必填/重复/售罄/待删除 + 补货草稿 + 最近变更。
+- **盘点**：差异报告 → `POST /gx/adjust` 生成调整单。
+- **配置版本历史/回滚** UI。
+- **PWA/移动端**：viewport-fit=cover、iOS 独立应用元信息、主题色。
+- **多集合**：`gx_group_config` + 单据/审计 `group_id` 隔离；前端 `gx-fetch` 插件注入 `X-Tenant`。
+
+### 已知限制 / 待办
+- `gx_item_meta` 以物品 ID 为键（天然按集合正确）；配置/单据/审计已按集合隔离。
+- 内部表 `gx_idempotency`、`gx_ai_cache` 仍为全局（应用实际用的是 `/data/idem.json` 与 `ai-cache/` 文件），未按集合隔离。
+- 迁移期遗留的 `gx_config`/`gx_config_history`/`gx_attribute_def`/`gx_attribute_option` 表已不再被应用读取（配置以 `gx_group_config` 为准），保留仅为历史兼容。
+- 移动端集合选择器若在折叠菜单内，需先选择集合后自研请求才带 `X-Tenant`；未选择时后端回退默认集合。
+- 上游 Homebox 内核未改；未来升级仅需重跑补丁 + `--ensure` + 校验。

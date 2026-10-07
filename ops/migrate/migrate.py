@@ -97,6 +97,7 @@ def backfill_groups(t):
         for h in t.execute("SELECT version,json,reason,created_at FROM gx_config_history"):
             t.execute("INSERT INTO gx_group_config_history (id,group_id,version,json,reason,created_at) VALUES (?,?,?,?,?,?)",
                       (str(uuid.uuid4()), gid, h[0], h[1], h[2], h[3]))
+    t.execute("INSERT OR IGNORE INTO gx_schema_version (version,applied_at) VALUES (3,?)", (now_iso(),))
     t.commit()
 
 # ---------------------------------------------------------------- 属性配置
