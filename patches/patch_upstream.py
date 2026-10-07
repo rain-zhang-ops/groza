@@ -280,21 +280,6 @@ def main():
         'import MdiMagnify from "~icons/mdi/magnify";',
         'import MdiMagnify from "~icons/mdi/magnify";\n  import MdiCashMultiple from "~icons/mdi/cash-multiple";',
         "nav-sell-icon-import")
-    old_items = ('    {\n'
-                 '      icon: MdiMagnify,\n'
-                 '      id: 3,\n'
-                 '      active: computed(() => route.path === "/items"),\n'
-                 '      name: computed(() => t("menu.search")),\n'
-                 '      to: "/items",\n'
-                 '    },')
-    new_items = ('    {\n'
-                 '      icon: MdiMagnify,\n'
-                 '      id: 3,\n'
-                 '      active: computed(() => route.path === "/ledger"),\n'
-                 '      name: computed(() => "物品"),\n'
-                 '      to: "/ledger",\n'
-                 '    },')
-    rep(dv, old_items, new_items, "nav-items-to-ledger")
     rep(dv,
         'navigateTo(`/items?q=${encodeURIComponent(search.value)}`);',
         'navigateTo(`/ledger?q=${encodeURIComponent(search.value)}`);',
@@ -462,29 +447,104 @@ def main():
             open(p, "w", encoding="utf-8").write(s)
             done("routes-biz 入库路由 + 公开图片路由")
 
-    # ---- 9. 侧边栏「进货」入口（物品 之后；用 MdiCashMultiple 图标）----
+    # ---- 9. 侧边栏重构（以「库存维护」为中心，整段替换 nav 数组）----
     rep(dv,
-        '    {\n      icon: MdiMagnify,\n      id: 3,\n      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
-        '    {\n      icon: MdiClipboardCheckOutline,\n      id: 900,\n      active: computed(() => route.path === "/tasks"),\n      name: computed(() => "待办"),\n      to: "/tasks",\n    },\n' +
-        '    {\n      icon: MdiMagnify,\n      id: 3,\n      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
-        "nav-tasks-entry")
-    rep(dv,
-        '      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
-        '      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },\n    {\n      icon: MdiCashMultiple,\n      id: 901,\n      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },',
-        "nav-intake-entry")
-    # 侧栏「出货」入口（进货 之后）
-    rep(dv,
-        '      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },',
-        '      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },\n    {\n      icon: MdiExport,\n      id: 902,\n      active: computed(() => route.path === "/outbound"),\n      name: computed(() => "出货"),\n      to: "/outbound",\n    },',
-        "nav-outbound-entry")
-    rep(dv,
-        'import MdiCashMultiple from "~icons/mdi/cash-multiple";',
-        'import MdiCashMultiple from "~icons/mdi/cash-multiple";\n  import MdiExport from "~icons/mdi/export";',
-        "nav-outbound-icon")
-    rep(dv,
-        'import MdiExport from "~icons/mdi/export";',
-        'import MdiExport from "~icons/mdi/export";\n  import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";',
-        "nav-tasks-icon")
+        'import MdiCog from "~icons/mdi/cog";',
+        'import MdiCog from "~icons/mdi/cog";\n  import MdiClipboardListOutline from "~icons/mdi/clipboard-list-outline";\n  import MdiTruckDeliveryOutline from "~icons/mdi/truck-delivery-outline";\n  import MdiTune from "~icons/mdi/tune";',
+        "nav-restructure-icons")
+    nav_body = (
+        '    {\n'
+        '      icon: MdiClipboardCheckOutline,\n'
+        '      id: 900,\n'
+        '      active: computed(() => route.path === "/tasks"),\n'
+        '      name: computed(() => "待办"),\n'
+        '      to: "/tasks",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiMagnify,\n'
+        '      id: 3,\n'
+        '      active: computed(() => route.path === "/ledger"),\n'
+        '      name: computed(() => "物品"),\n'
+        '      to: "/ledger",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiClipboardListOutline,\n'
+        '      id: 905,\n'
+        '      active: computed(() => route.path === "/ledger" && route.query.count === "1"),\n'
+        '      name: computed(() => "盘点"),\n'
+        '      to: "/ledger?count=1",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiTruckDeliveryOutline,\n'
+        '      id: 903,\n'
+        '      active: computed(() => ["/intake", "/outbound", "/documents"].includes(route.path)),\n'
+        '      name: computed(() => "进出"),\n'
+        '      to: "/intake",\n'
+        '      collapsible: [\n'
+        '        { id: 901, active: computed(() => route.path === "/intake"), name: computed(() => "入库"), to: "/intake" },\n'
+        '        { id: 902, active: computed(() => route.path === "/outbound"), name: computed(() => "出库"), to: "/outbound" },\n'
+        '        { id: 904, active: computed(() => route.path === "/documents"), name: computed(() => "单据"), to: "/documents" },\n'
+        '      ],\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiTune,\n'
+        '      id: 907,\n'
+        '      active: computed(() => ["/collection/fields", "/collection/ui-options", "/tags", "/collection/entity-types", "/collection/tools"].includes(route.path)),\n'
+        '      name: computed(() => "库存配置"),\n'
+        '      to: "/collection/fields",\n'
+        '      collapsible: [\n'
+        '        { id: 9061, active: computed(() => route.path === "/collection/fields"), name: computed(() => "字段 / 位置 / 媒体 / 组织"), to: "/collection/fields" },\n'
+        '        { id: 9062, active: computed(() => route.path === "/collection/ui-options"), name: computed(() => "选项配置"), to: "/collection/ui-options" },\n'
+        '        { id: 9063, active: computed(() => route.path === "/tags"), name: computed(() => "标签"), to: "/tags" },\n'
+        '        { id: 9064, active: computed(() => route.path === "/collection/entity-types"), name: computed(() => "结构"), to: "/collection/entity-types" },\n'
+        '        { id: 9065, active: computed(() => route.path === "/collection/tools"), name: computed(() => "工具"), to: "/collection/tools" },\n'
+        '      ],\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiCog,\n'
+        '      id: 7,\n'
+        '      active: computed(() => ["/collection/members", "/collection/invites", "/collection/notifiers", "/collection/settings"].includes(route.path)),\n'
+        '      name: computed(() => "设置"),\n'
+        '      to: "/collection/members",\n'
+        '      collapsible: [\n'
+        '        { id: 61, active: computed(() => route.path === "/collection/members"), name: computed(() => t("collection.tabs.members")), to: "/collection/members" },\n'
+        '        { id: 62, active: computed(() => route.path === "/collection/invites"), name: computed(() => t("collection.tabs.invites")), to: "/collection/invites" },\n'
+        '        { id: 63, active: computed(() => route.path === "/collection/notifiers"), name: computed(() => t("collection.tabs.notifiers")), to: "/collection/notifiers" },\n'
+        '        { id: 64, active: computed(() => route.path === "/collection/settings"), name: computed(() => t("collection.tabs.settings")), to: "/collection/settings" },\n'
+        '      ],\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiAccount,\n'
+        '      id: 6,\n'
+        '      active: computed(() => route.path === "/profile"),\n'
+        '      name: computed(() => t("menu.profile")),\n'
+        '      to: "/profile",\n'
+        '    },\n'
+    )
+    s_nav = open(dv, encoding="utf-8").read()
+    if 'name: computed(() => "进出")' in s_nav:
+        skip("nav-restructure")
+    else:
+        marker = "  }[] = ["
+        j = s_nav.find(marker)
+        if j < 0:
+            fail("nav-restructure", "未找到 nav 数组")
+        else:
+            arr_start = j + len(marker)
+            arr_end = s_nav.find("\n  ];", arr_start)
+            if arr_end < 0:
+                fail("nav-restructure", "未找到 nav 数组结尾")
+            else:
+                s_nav = s_nav[:arr_start] + "\n" + nav_body.rstrip("\n") + "\n  ];" + s_nav[arr_end + len("\n  ];"):]
+                open(dv, "w", encoding="utf-8").write(s_nav)
+                done("nav-restructure 库存维护为中心")
+
+    # 默认落地页：/home -> /tasks（待办）
+    rep(f"{fe}/pages/index.vue", 'return "/home";', 'return "/tasks";', "landing-home-to-tasks")
+    rep(f"{fe}/pages/index.vue",
+        'navigateTo(redirectTo.value || "/home");',
+        'navigateTo(redirectTo.value || "/tasks");',
+        "landing-redirect-to-tasks")
 
     # ---- 10. 模板模块：保留字段类型 + 可选类型 + 移动友好 + 并入集合 ----
     # (a) CreateModal：允许选类型，字段行移动友好

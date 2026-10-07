@@ -426,3 +426,14 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - 迁移期遗留的 `gx_config`/`gx_config_history`/`gx_attribute_def`/`gx_attribute_option` 已确认无独有数据（配置以 `gx_group_config` 为准）并**已清理**（`--ensure` 会 `DROP`）。
 - 移动端集合选择器若在折叠菜单内，需先选择集合后自研请求才带 `X-Tenant`；未选择时后端回退默认集合。
 - 上游 Homebox 内核未改；未来升级仅需重跑补丁 + `--ensure` + 校验。
+
+### 导航结构（重构后）
+以「库存维护」为中心（整段替换上游 nav）：
+- **待办** `/tasks`（默认落地页，吸收原「首页」）
+- **物品** `/ledger`
+- **盘点** `/ledger?count=1`
+- **进出** ▾：入库 `/intake` · 出库 `/outbound` · 单据 `/documents`（统一读 `gx_document`）
+- **库存配置** ▾：字段/位置/媒体/组织 `/collection/fields` · 选项配置 `/collection/ui-options` · 标签 `/tags` · 结构 `/collection/entity-types` · 工具 `/collection/tools`
+- **设置** ▾：成员 / 邀请 / 通知 / 集合设置
+- **我的** `/profile`
+隐藏/降级：首页、维护、顶级标签、旧的 物品/分类/模板 页。

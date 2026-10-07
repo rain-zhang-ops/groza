@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/gx_documents.go backend/gx_perms.go backend/gx_adjust.go backend/trash.go frontend/pages/ledger.vue frontend/pages/tasks.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts frontend/plugins/gx-fetch.client.ts patches/patch_upstream.py"
+CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/gx_documents.go backend/gx_perms.go backend/gx_adjust.go backend/trash.go frontend/pages/ledger.vue frontend/pages/tasks.vue frontend/pages/documents.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts frontend/plugins/gx-fetch.client.ts patches/patch_upstream.py"
 for f in $CUSTOM_FILES; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
@@ -140,6 +140,7 @@ cp "$HOME_DIR/frontend/pages/intake-records.vue" "$FE_DIR/pages/intake-records.v
 cp "$HOME_DIR/frontend/pages/outbound.vue" "$FE_DIR/pages/outbound.vue"
 cp "$HOME_DIR/frontend/pages/outbound-records.vue" "$FE_DIR/pages/outbound-records.vue"
 cp "$HOME_DIR/frontend/pages/tasks.vue" "$FE_DIR/pages/tasks.vue"
+cp "$HOME_DIR/frontend/pages/documents.vue" "$FE_DIR/pages/documents.vue"
 mkdir -p "$FE_DIR/composables"
 cp "$HOME_DIR/frontend/composables/useOfflineQueue.ts" "$FE_DIR/composables/useOfflineQueue.ts"
 cp "$HOME_DIR/frontend/plugins/gx-fetch.client.ts" "$FE_DIR/plugins/gx-fetch.client.ts"
