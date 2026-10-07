@@ -56,6 +56,22 @@
   async function loadMe() {
     try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
   }
+  const history = ref<Array<{ version: number; reason: string; createdAt: string }>>([]);
+  const restoring = ref(0);
+  async function loadHistory() {
+    try { const h = await $fetch<Record<string, any>>("/api/v1/gx/config/history"); history.value = h.history || []; } catch (_e) { /* ignore */ }
+  }
+  async function restoreVersion(v: number) {
+    if (!isOwner.value) { toast.error("仅管理员可回滚配置"); return; }
+    if (!window.confirm(`恢复到配置 v${v}？（将生成新版本，可再次回滚）`)) return;
+    restoring.value = v;
+    try {
+      const r = await $fetch<Record<string, any>>("/api/v1/gx/config/restore", { method: "POST", body: { version: v } });
+      toast.success("已恢复（新版本 " + (r?.version ?? "?") + "）");
+      await load(); await loadHistory();
+    } catch (e) { toast.error("恢复失败：" + ((e as Error)?.message ?? String(e))); }
+    finally { restoring.value = 0; }
+  }
 
   function genKey() { return "k" + Date.now().toString(36) + Math.floor(Math.random() * 100); }
 
@@ -115,7 +131,7 @@
     finally { saving.value = false; }
   }
 
-  onMounted(() => { void loadMe(); void load(); });
+  onMounted(() => { void loadMe(); void loadHistory(); void load(); });
 </script>
 
 <template>
@@ -244,6 +260,24 @@
         </div>
         <label class="flex items-center gap-2 text-sm"><input v-model="cfg.organization.series.enabled" type="checkbox" class="size-4 accent-primary" /> 启用系列（按名称去括号派生）</label>
         <label class="flex items-center gap-2 text-sm"><input v-model="cfg.organization.series.stripParentheses" type="checkbox" class="size-4 accent-primary" /> 去除名称中的括号内容</label>
+      </section>
+
+      <!-- 版本历史 -->
+      <section class="space-y-2 rounded-md border bg-card p-4">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">版本历史（最近 {{ history.length }}）</span>
+          <span class="text-xs text-muted-foreground">当前 v{{ cfg.version }}</span>
+        </div>
+        <p class="text-xs text-muted-foreground">每次保存都会生成一个版本；可恢复到任意历史版本（生成新版本，不丢失后续记录）。</p>
+        <div v-if="!history.length" class="py-3 text-center text-sm text-muted-foreground">暂无历史</div>
+        <div v-else class="divide-y rounded-lg border text-sm">
+          <div v-for="h in history" :key="h.version" class="flex items-center gap-2 p-2">
+            <span class="w-12 shrink-0 font-mono text-xs">v{{ h.version }}</span>
+            <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ h.reason || "保存" }}</span>
+            <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ (h.createdAt || "").slice(0, 16).replace("T", " ") }}</span>
+            <button class="shrink-0 rounded-lg border px-2 py-1 text-xs transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="!isOwner || restoring === h.version || h.version === cfg.version" @click="restoreVersion(h.version)">{{ restoring === h.version ? "恢复中…" : "恢复" }}</button>
+          </div>
+        </div>
       </section>
     </template>
   </div>

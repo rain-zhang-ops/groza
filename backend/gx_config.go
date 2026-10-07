@@ -115,3 +115,84 @@ func (a *app) handleGxConfigPut() errchain.HandlerFunc {
 		return server.JSON(w, http.StatusOK, map[string]any{"version": ver})
 	}
 }
+
+func (a *app) handleGxConfigHistory() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		db, err := gxOpen()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		rows, err := db.Query(`SELECT version, COALESCE(reason,''), created_at FROM gx_config_history ORDER BY version DESC LIMIT 50`)
+		if err != nil {
+			return fmt.Errorf("读取配置历史失败: %w", err)
+		}
+		defer rows.Close()
+		type row struct {
+			Version   int    `json:"version"`
+			Reason    string `json:"reason"`
+			CreatedAt string `json:"createdAt"`
+		}
+		out := make([]row, 0, 16)
+		for rows.Next() {
+			var x row
+			if err := rows.Scan(&x.Version, &x.Reason, &x.CreatedAt); err != nil {
+				return err
+			}
+			out = append(out, x)
+		}
+		return server.JSON(w, http.StatusOK, map[string]any{"history": out})
+	}
+}
+
+func (a *app) handleGxConfigRestore() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requireOwner(r); err != nil {
+			return err
+		}
+		var body struct {
+			Version int `json:"version"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			return validate.NewRequestError(err, http.StatusBadRequest)
+		}
+		db, err := gxOpen()
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+		tx, err := db.Begin()
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+
+		var prev string
+		if err := tx.QueryRow(`SELECT json FROM gx_config_history WHERE version=?`, body.Version).Scan(&prev); err != nil {
+			return validate.NewRequestError(fmt.Errorf("版本不存在"), http.StatusNotFound)
+		}
+		var cur int
+		_ = tx.QueryRow(`SELECT version FROM gx_config WHERE id=1`).Scan(&cur)
+		newVer := cur + 1
+		var doc map[string]json.RawMessage
+		_ = json.Unmarshal([]byte(prev), &doc)
+		if v, e := json.Marshal(newVer); e == nil {
+			doc["version"] = v
+		}
+		norm, _ := json.Marshal(doc)
+		now := time.Now().UTC().Format(time.RFC3339)
+		if _, err = tx.Exec(`INSERT INTO gx_config (id,version,json,updated_at) VALUES (1,?,?,?)
+			ON CONFLICT(id) DO UPDATE SET version=excluded.version, json=excluded.json, updated_at=excluded.updated_at`,
+			newVer, string(norm), now); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`INSERT INTO gx_config_history (id,version,json,reason,created_at) VALUES (?,?,?,?,?)`,
+			uuid.NewString(), newVer, string(norm), fmt.Sprintf("restore v%d", body.Version), now); err != nil {
+			return err
+		}
+		if err = tx.Commit(); err != nil {
+			return err
+		}
+		return server.JSON(w, http.StatusOK, map[string]any{"version": newVer})
+	}
+}
