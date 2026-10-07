@@ -13,3 +13,6 @@ __pycache__/
 
 # node
 node_modules/
+
+# stale backups
+*.v1.bak
