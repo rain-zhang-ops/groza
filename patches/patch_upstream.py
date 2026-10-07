@@ -452,6 +452,10 @@ def main():
         'import MdiCog from "~icons/mdi/cog";',
         'import MdiCog from "~icons/mdi/cog";\n  import MdiClipboardListOutline from "~icons/mdi/clipboard-list-outline";\n  import MdiTruckDeliveryOutline from "~icons/mdi/truck-delivery-outline";\n  import MdiTune from "~icons/mdi/tune";',
         "nav-restructure-icons")
+    rep(dv,
+        'import MdiTune from "~icons/mdi/tune";',
+        'import MdiTune from "~icons/mdi/tune";\n  import MdiCogOutline from "~icons/mdi/cog-outline";',
+        "nav-cogoutline-icon")
     nav_body = (
         '    {\n'
         '      icon: MdiClipboardCheckOutline,\n'
@@ -489,15 +493,13 @@ def main():
         '    {\n'
         '      icon: MdiTune,\n'
         '      id: 907,\n'
-        '      active: computed(() => ["/collection/fields", "/collection/ui-options", "/tags", "/collection/entity-types", "/collection/tools"].includes(route.path)),\n'
+        '      active: computed(() => ["/collection/fields", "/collection/ui-options", "/tags"].includes(route.path)),\n'
         '      name: computed(() => "库存配置"),\n'
         '      to: "/collection/fields",\n'
         '      collapsible: [\n'
         '        { id: 9061, active: computed(() => route.path === "/collection/fields"), name: computed(() => "字段 / 位置 / 媒体 / 组织"), to: "/collection/fields" },\n'
         '        { id: 9062, active: computed(() => route.path === "/collection/ui-options"), name: computed(() => "选项配置"), to: "/collection/ui-options" },\n'
         '        { id: 9063, active: computed(() => route.path === "/tags"), name: computed(() => "标签"), to: "/tags" },\n'
-        '        { id: 9064, active: computed(() => route.path === "/collection/entity-types"), name: computed(() => "结构"), to: "/collection/entity-types" },\n'
-        '        { id: 9065, active: computed(() => route.path === "/collection/tools"), name: computed(() => "工具"), to: "/collection/tools" },\n'
         '      ],\n'
         '    },\n'
         '    {\n'
@@ -514,6 +516,17 @@ def main():
         '      ],\n'
         '    },\n'
         '    {\n'
+        '      icon: MdiCogOutline,\n'
+        '      id: 908,\n'
+        '      active: computed(() => ["/collection/entity-types", "/collection/tools"].includes(route.path)),\n'
+        '      name: computed(() => "高级"),\n'
+        '      to: "/collection/entity-types",\n'
+        '      collapsible: [\n'
+        '        { id: 9081, active: computed(() => route.path === "/collection/entity-types"), name: computed(() => "结构"), to: "/collection/entity-types" },\n'
+        '        { id: 9082, active: computed(() => route.path === "/collection/tools"), name: computed(() => "工具"), to: "/collection/tools" },\n'
+        '      ],\n'
+        '    },\n'
+        '    {\n'
         '      icon: MdiAccount,\n'
         '      id: 6,\n'
         '      active: computed(() => route.path === "/profile"),\n'
@@ -522,7 +535,7 @@ def main():
         '    },\n'
     )
     s_nav = open(dv, encoding="utf-8").read()
-    if 'name: computed(() => "进出")' in s_nav:
+    if 'name: computed(() => "高级")' in s_nav:
         skip("nav-restructure")
     else:
         marker = "  }[] = ["

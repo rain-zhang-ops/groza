@@ -24,6 +24,9 @@
   const q = ref("");
   const showRolled = ref(true);
   const busy = ref("");
+  const dFrom = ref("");
+  const dTo = ref("");
+  const fParty = ref("");
   const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
 
   function flash(t: string) { try { toast(t); } catch (_e) { alert(t); } }
@@ -31,13 +34,25 @@
   function dt(ts: string): string { return String(ts || "").slice(5, 16).replace("T", " "); }
 
   const partyLabel = computed(() => kind.value === "intake" ? "供应商" : kind.value === "outbound" ? "去向 / 原因" : "备注");
+  const parties = computed(() => [...new Set(docs.value.map(d => d.party).filter(Boolean))].sort());
   const matched = computed(() => {
     const kw = q.value.trim().toLowerCase();
-    return docs.value.filter(d =>
-      (showRolled.value || !d.rolledBack) &&
-      (!kw || (d.items || []).some(it => String(it.name || "").toLowerCase().includes(kw)) ||
-        String(d.party || "").toLowerCase().includes(kw) || String(d.note || "").toLowerCase().includes(kw) || d.id.includes(kw)));
+    return docs.value.filter(d => {
+      const day = String(d.ts || "").slice(0, 10);
+      return (showRolled.value || !d.rolledBack) &&
+        (!fParty.value || d.party === fParty.value) &&
+        (!dFrom.value || day >= dFrom.value) &&
+        (!dTo.value || day <= dTo.value) &&
+        (!kw || (d.items || []).some(it => String(it.name || "").toLowerCase().includes(kw)) ||
+          String(d.party || "").toLowerCase().includes(kw) || String(d.note || "").toLowerCase().includes(kw) || d.id.includes(kw));
+    });
   });
+  const totals = computed(() => {
+    let cnt = 0, cost = 0;
+    for (const d of matched.value) if (!d.rolledBack) { cnt += (d.items || []).reduce((a, it) => a + it.count, 0); cost += d.totalCost || 0; }
+    return { cnt, cost };
+  });
+  watch(kind, () => { fParty.value = ""; load(); });
 
   async function load() {
     loading.value = true; err.value = "";
@@ -47,9 +62,7 @@
     } catch (e) { err.value = "加载失败：" + ((e as Error)?.message ?? String(e)); }
     finally { loading.value = false; }
   }
-  watch(kind, load);
   onMounted(load);
-
   async function rollback(d: Doc) {
     if (!window.confirm(`回滚该${kind.value === "intake" ? "入库" : "出库"}单 ${d.id}？将把库存改回去。`)) return;
     busy.value = d.id;
@@ -96,8 +109,17 @@
       <section class="mb-3 rounded-xl border bg-card p-2 shadow-sm">
         <div class="flex flex-wrap items-center gap-2">
           <input v-model="q" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="搜索：单号 / 明细 / 备注" />
+          <select v-model="fParty" :class="[inputCls, 'h-10 max-w-40 text-base']">
+            <option value="">全部{{ partyLabel }}</option>
+            <option v-for="p in parties" :key="p" :value="p">{{ p }}</option>
+          </select>
           <label class="inline-flex items-center gap-1 text-xs text-muted-foreground"><input v-model="showRolled" type="checkbox" class="accent-primary" /> 显示已回滚</label>
           <button class="rounded-lg border px-2.5 py-1.5 text-sm transition hover:bg-muted" @click="exportCSV">导出CSV</button>
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <label>从 <input v-model="dFrom" type="date" :class="[inputCls, 'h-9']" /></label>
+          <label>到 <input v-model="dTo" type="date" :class="[inputCls, 'h-9']" /></label>
+          <span class="ml-auto">共 {{ matched.length }} 单 · {{ totals.cnt }} 件<template v-if="kind !== 'outbound'"> · 金额 ¥{{ fmt(totals.cost) }}</template>（不含已回滚）</span>
         </div>
       </section>
 
