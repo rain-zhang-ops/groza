@@ -37,6 +37,7 @@ type ledgerRowOut struct {
 	Fields    []repo.EntityFieldData `json:"fields"`
 	Notes     string                 `json:"notes"`
 	AssetID   repo.AssetID           `json:"assetId"`
+	Serial    string                 `json:"serial"`
 }
 
 type ledgerLocation struct {
@@ -102,6 +103,7 @@ func (a *app) handleLedgerAggregate() errchain.HandlerFunc {
 			if err == nil {
 				row.Fields = full.Fields
 				row.Notes = full.Notes
+				row.Serial = full.SerialNumber
 				for _, att := range full.Attachments {
 					if att.Primary {
 						id := att.ID
@@ -150,6 +152,7 @@ func (a *app) handleLedgerAggregate() errchain.HandlerFunc {
 
 type ledgerFieldPatch struct {
 	Fields    map[string]any `json:"fields"`
+	Serial    *string        `json:"serial,omitempty"`
 	UpdatedAt *time.Time     `json:"updatedAt,omitempty"`
 }
 
@@ -164,8 +167,8 @@ func (a *app) handleLedgerFieldPatch() errchain.HandlerFunc {
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)
 		}
-		if len(body.Fields) == 0 {
-			return validate.NewRequestError(fmt.Errorf("fields 不能为空"), http.StatusBadRequest)
+		if len(body.Fields) == 0 && body.Serial == nil {
+			return validate.NewRequestError(fmt.Errorf("fields/serial 不能都为空"), http.StatusBadRequest)
 		}
 
 		ctx := services.NewContext(r.Context())
@@ -201,13 +204,21 @@ func (a *app) handleLedgerFieldPatch() errchain.HandlerFunc {
 			fields = append(fields, nf)
 		}
 
+		if body.Serial != nil && *body.Serial != full.SerialNumber {
+			changed = true
+		}
 		if !changed {
 			return server.JSON(w, http.StatusOK, full)
 		}
 
+		serial := full.SerialNumber
+		if body.Serial != nil {
+			serial = *body.Serial
+		}
 		upd := repo.EntityUpdate{
 			ParentID:     full.Parent.ID,
 			ID:           id,
+			SerialNumber: serial,
 			AssetID:      full.AssetID,
 			Name:         full.Name,
 			Description:  full.Description,
@@ -228,6 +239,9 @@ func (a *app) handleLedgerFieldPatch() errchain.HandlerFunc {
 		keys := make([]string, 0, len(body.Fields))
 		for k := range body.Fields {
 			keys = append(keys, k)
+		}
+		if body.Serial != nil {
+			keys = append(keys, "库位")
 		}
 		auditLog("ledger.field_patch", map[string]any{"entityId": id.String(), "name": full.Name, "fields": keys})
 		return server.JSON(w, http.StatusOK, out)

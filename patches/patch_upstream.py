@@ -114,6 +114,56 @@ def rebrand_locale(fe):
         skip("rebrand zh-CN")
 
 
+def patch_dark(fe):
+    p = f"{fe}/assets/css/main.css"
+    try:
+        s = open(p, encoding="utf-8").read()
+    except OSError:
+        fail("dark-mode", "无法读取 main.css")
+        return
+    if "prefers-color-scheme: dark" in s:
+        skip("dark-mode")
+        return
+    dark = """
+
+/* Groza 深色主题（跟随系统 prefers-color-scheme）。未放入 @layer base，优先级高于所有分层主题。*/
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 222 22% 11%;
+    --background-accent: 222 18% 16%;
+    --foreground: 210 30% 92%;
+    --primary: 217 70% 60%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 222 25% 18%;
+    --secondary-foreground: 210 30% 92%;
+    --accent: 222 30% 22%;
+    --accent-foreground: 210 30% 92%;
+    --muted: 222 20% 20%;
+    --muted-foreground: 215 20% 68%;
+    --card: 222 22% 14%;
+    --card-foreground: 210 30% 92%;
+    --popover: 222 22% 14%;
+    --popover-foreground: 210 30% 92%;
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --input: 222 18% 26%;
+    --border: 222 18% 24%;
+    --ring: 217 70% 60%;
+    --sidebar-background: 222 25% 10%;
+    --sidebar-foreground: 210 30% 90%;
+    --sidebar-primary: 217 70% 60%;
+    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-accent: 222 25% 18%;
+    --sidebar-accent-foreground: 210 30% 92%;
+    --sidebar-border: 222 18% 24%;
+    --sidebar-ring: 217 70% 60%;
+  }
+}
+"""
+    open(p, "a", encoding="utf-8").write(dark)
+    done("dark-mode 深色跟随系统")
+
+
 def main():
     fe, be = sys.argv[1], sys.argv[2]
 
@@ -156,6 +206,11 @@ def main():
         "brand-login-title")
     patch_colors(fe)
     rebrand_locale(fe)
+    patch_dark(fe)
+    rep(f"{fe}/app.vue",
+        '<Meta name="theme-color" content="#5b7f67" />',
+        '<Meta name="theme-color" content="#2f3e7e" media="(prefers-color-scheme: light)" />\n      <Meta name="theme-color" content="#111725" media="(prefers-color-scheme: dark)" />',
+        "pwa-theme-color")
 
     # ---- 2b. PWA Service Worker 策略 ----
     #   /api        -> NetworkOnly（保证库存/流水实时，不被缓存落后）

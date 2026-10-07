@@ -24,6 +24,7 @@
   import MdiHistory from "~icons/mdi/history";
   import MdiDownload from "~icons/mdi/download";
   import MdiDeleteForever from "~icons/mdi/delete-forever";
+  import MdiImageMultiple from "~icons/mdi/image-multiple";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -48,6 +49,7 @@
     safety: number | null;
     qty: number;
     loc: string;
+    serial: string;
     thumb: string | null;
     count: number | null;
     updated: string;
@@ -141,11 +143,11 @@
   // ---------- 导出 CSV（当前筛选） ----------
   function exportCSV() {
     const list = sorted.value;
-    const cols = ["名称", "品牌", "尺寸", "规格", "颜色", "材质", "数量", "进价", "售价", "安全库存", "分类", "资产号"];
+    const cols = ["名称", "品牌", "尺寸", "规格", "颜色", "材质", "数量", "进价", "售价", "安全库存", "分类", "库位", "资产号"];
     const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const lines = [cols.join(",")];
     for (const r of list) {
-      lines.push([r.name, r.brand, r.size, r.spec, r.color, r.material, r.qty ?? 0, r.purchase ?? "", r.sell ?? "", r.safety ?? "", r.loc, r.raw.assetId ?? ""].map(esc).join(","));
+      lines.push([r.name, r.brand, r.size, r.spec, r.color, r.material, r.qty ?? 0, r.purchase ?? "", r.sell ?? "", r.safety ?? "", r.loc, r.serial ?? "", r.raw.assetId ?? ""].map(esc).join(","));
     }
     const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -644,7 +646,7 @@
   const sort = reactive<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
   const cols = reactive({
     size: true, spec: true, color: true, material: true, purchase: true, sell: true,
-    safety: true, updated: true,
+    safety: true, updated: true, shelf: true,
   });
   const batch = reactive<{ qty: number | null; purchase: number | null; sell: number | null; safety: number | null; tag: string; loc: string }>({
     qty: null, purchase: null, sell: null, safety: null, tag: "", loc: "",
@@ -682,6 +684,7 @@
       qty: e.quantity ?? 0,
       loc: typeof e.parent === "string" ? e.parent : (parent?.name || ""),
       thumb: e.thumb || e.imageId || e.thumbnailId || null,
+      serial: String(e.serial ?? e.serialNumber ?? ""),
       count: null, updated: e.updatedAt || "",
     } as Row;
   }
@@ -739,7 +742,7 @@
       raw: e, id: e.id, name: e.name,
       brand: "", size: "", spec: "", color: "", material: "", paper: "",
       purchase: null, sell: null, pages: null, safety: null,
-      qty: e.quantity ?? 0, loc: parent?.name || "", thumb: null, count: null, updated: e.updatedAt || "",
+      qty: e.quantity ?? 0, loc: parent?.name || "", serial: String(e.serial ?? e.serialNumber ?? ""), thumb: null, count: null, updated: e.updatedAt || "",
     } as Row;
   }
   async function hydrateRows(ids: string[], concurrency = 8) {
@@ -1147,6 +1150,81 @@
       await load();
     } catch (e) { flash("彻底删除失败：" + ((e as Error)?.message ?? String(e))); }
   }
+  function setSerial(r: Row) { void putSerial(r, r.serial); }
+  async function putSerial(r: Row, val: string) {
+    saving[r.id] = true;
+    try {
+      await $fetch(`/api/v1/ledger/${r.id}`, { method: "PATCH", body: { serial: val, updatedAt: r.updated, fields: {} } });
+      r.raw.serial = val;
+      r.updated = new Date().toISOString();
+      markSaved(r.id); flash("已保存库位");
+    } catch (e) { flash("保存库位失败：" + ((e as Error)?.message ?? String(e))); }
+    finally { saving[r.id] = false; }
+  }
+  function promptSerial(r: Row) {
+    const v = window.prompt("库位/货架位（如 A-3，留空清除）", r.serial || "");
+    if (v === null) return;
+    r.serial = v.trim();
+    void putSerial(r, r.serial);
+  }
+
+  const galleryOpen = ref(false);
+  const galleryId = ref("");
+  const galleryTitle = ref("");
+  const galleryImgs = ref<Array<Record<string, any>>>([]);
+  const galleryBusy = ref(false);
+  const galleryInput = ref<HTMLInputElement | null>(null);
+  function pickGallery() { galleryInput.value?.click(); }
+  function attUrl(aid: string) { return `/api/v1/entities/${galleryId.value}/attachments/${aid}`; }
+  async function showGallery(r: Row) {
+    galleryId.value = r.id; galleryTitle.value = r.name; galleryOpen.value = true; galleryBusy.value = true; galleryImgs.value = [];
+    try {
+      const d = await $fetch<Record<string, any>>(`/api/v1/entities/${r.id}`);
+      galleryImgs.value = (d.attachments || []).filter((a: any) => String(a.mimeType || "").startsWith("image/"));
+    } catch (_e) { galleryImgs.value = []; }
+    galleryBusy.value = false;
+  }
+  async function onGalleryFiles(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = Array.from(input.files || []);
+    input.value = "";
+    if (!files.length) return;
+    galleryBusy.value = true;
+    let first = galleryImgs.value.length === 0;
+    for (const f of files) {
+      try {
+        const blob = await compressImage(f);
+        const form = new FormData();
+        form.append("file", blob, "photo.jpg");
+        form.append("name", "photo.jpg");
+        form.append("type", "photo");
+        form.append("primary", first ? "true" : "false");
+        first = false;
+        const d = await $fetch<Record<string, any>>(`/api/v1/entities/${galleryId.value}/attachments`, { method: "POST", body: form });
+        galleryImgs.value = (d.attachments || []).filter((a: any) => String(a.mimeType || "").startsWith("image/"));
+      } catch (err) { flash("上传失败：" + ((err as Error)?.message ?? String(err))); }
+    }
+    galleryBusy.value = false;
+  }
+  async function delGalleryImg(a: Record<string, any>) {
+    if (!window.confirm("删除这张图片？")) return;
+    galleryBusy.value = true;
+    try {
+      await $fetch(`/api/v1/entities/${galleryId.value}/attachments/${a.id}`, { method: "DELETE" });
+      galleryImgs.value = galleryImgs.value.filter(x => x.id !== a.id);
+    } catch (e) { flash("删除失败：" + ((e as Error)?.message ?? String(e))); }
+    galleryBusy.value = false;
+  }
+  async function setPrimaryImg(a: Record<string, any>) {
+    galleryBusy.value = true;
+    try {
+      await $fetch(`/api/v1/entities/${galleryId.value}/attachments/${a.id}`, { method: "PUT", body: { type: a.type || "photo", title: a.title || "", primary: true } });
+      galleryImgs.value = galleryImgs.value.map(x => ({ ...x, primary: x.id === a.id }));
+    } catch (e) { flash("设置封面失败：" + ((e as Error)?.message ?? String(e))); }
+    galleryBusy.value = false;
+  }
+  async function closeGallery() { galleryOpen.value = false; await load(); }
+
   async function purgeAll() {
     const n = trashedCount.value;
     if (!n) { flash("回收站为空"); return; }
@@ -1215,7 +1293,7 @@
     (!filter.spec || r.spec === filter.spec) &&
     (!filter.color || r.color === filter.color) &&
     (!filter.material || r.material === filter.material) &&
-    (!filter.q || r.name.toLowerCase().includes(filter.q.toLowerCase())) &&
+    (!filter.q || r.name.toLowerCase().includes(filter.q.toLowerCase()) || String(r.serial || "").toLowerCase().includes(filter.q.toLowerCase()) || String(r.raw.assetId || "").toLowerCase().includes(filter.q.toLowerCase())) &&
     (!onlyLow.value || isLow(r)) &&
     dataMatch(r),
   ));
@@ -1627,7 +1705,7 @@
               <div class="absolute right-0 z-40 mt-1 w-44 origin-top-right rounded-lg border bg-popover p-2 text-sm shadow-lg animate-pop">
                 <label v-for="(val, key) in cols" :key="key" class="flex items-center gap-2 rounded px-1 py-1 hover:bg-muted">
                   <input v-model="cols[key]" type="checkbox" class="accent-primary" />
-                  {{ {size:'尺寸',spec:'规格',color:'颜色',material:'材质',purchase:'进价',sell:'售价',safety:'安全库存',updated:'更新时间'}[key] }}
+                  {{ {size:'尺寸',spec:'规格',color:'颜色',material:'材质',purchase:'进价',sell:'售价',safety:'安全库存',updated:'更新时间',shelf:'库位'}[key] }}
                 </label>
               </div>
             </details>
@@ -1766,6 +1844,7 @@
                   <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">售罄</span>
                 </div>
                 <div class="mt-1.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                  <button class="rounded-md bg-primary/10 px-1.5 py-0.5 text-primary" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
                   <span v-if="r.brand" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.brand }}</span>
                   <span v-if="r.size" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.size }}</span>
                   <span v-if="r.spec" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.spec }}</span>
@@ -1792,6 +1871,7 @@
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showQR(r)"><MdiQrcode class="h-4 w-4" />二维码</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" />复制</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showHistory(r)"><MdiHistory class="h-4 w-4" />历史</button>
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" />图片</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
                 <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
               </button>
@@ -1815,6 +1895,7 @@
               <th class="border-b px-2 py-2">图</th>
               <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('name')">名称{{ arrow("name") }}</th>
               <th v-if="cols.updated" class="cursor-pointer select-none border-b px-3 py-2 whitespace-nowrap transition hover:text-foreground" @click="setSort('updated')">更新{{ arrow("updated") }}</th>
+              <th v-if="cols.shelf" class="border-b px-3 py-2">库位</th>
               <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('brand')">品牌{{ arrow("brand") }}</th>
               <th v-if="cols.size" class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('size')">尺寸{{ arrow("size") }}</th>
               <th v-if="cols.spec" class="border-b px-3 py-2">规格</th>
@@ -1849,6 +1930,9 @@
                 </div>
               </td>
               <td v-if="cols.updated" :class="[cellPad, 'whitespace-nowrap text-muted-foreground']" :title="r.updated">{{ fmtDate(r.updated) }}</td>
+              <td v-if="cols.shelf" :class="cellPad">
+                <input v-model="r.serial" class="w-20 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="-" @change="setSerial(r)" />
+              </td>
               <td :class="cellPad"><select :value="r.brand" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '品牌', 'brand')"><option value="">-</option><option v-for="v in optsWith(brandOptions, r.brand)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
               <td v-if="cols.size" :class="cellPad"><select :value="r.size" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '尺寸', 'size')"><option value="">-</option><option v-for="v in optsWith(sizeOptions, r.size)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
               <td v-if="cols.spec" :class="cellPad"><select :value="r.spec" class="w-24 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '规格', 'spec')"><option value="">-</option><option v-for="v in optsWith(specOptions, r.spec)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
@@ -1879,6 +1963,7 @@
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="二维码标签" @click="showQR(r)"><MdiQrcode class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="复制一件" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="变更历史" @click="showHistory(r)"><MdiHistory class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="图片（多图）" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
                     <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
                   </button>
@@ -2172,7 +2257,31 @@
       </div>
     </Transition>
 
+    <!-- 多图 -->
+    <Transition name="fade">
+      <div v-if="galleryOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="closeGallery">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="font-semibold">图片 · {{ galleryTitle }}</span>
+            <button class="rounded-lg p-1 hover:bg-muted" @click="closeGallery"><MdiClose class="h-5 w-5" /></button>
+          </div>
+          <div v-if="galleryBusy" class="py-6 text-center text-sm text-muted-foreground">处理中…</div>
+          <div class="grid grid-cols-3 gap-2">
+            <div v-for="a in galleryImgs" :key="a.id" class="relative overflow-hidden rounded-lg border">
+              <img :src="attUrl(a.id)" class="h-28 w-full object-cover" alt="" />
+              <button v-if="!a.primary" class="absolute left-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white" @click="setPrimaryImg(a)">设封面</button>
+              <span v-else class="absolute left-1 top-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[11px] text-white">封面</span>
+              <button class="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white" @click="delGalleryImg(a)"><MdiDeleteForever class="h-3.5 w-3.5" /></button>
+            </div>
+            <button class="grid h-28 place-items-center rounded-lg border border-dashed text-3xl text-muted-foreground transition hover:bg-muted" @click="pickGallery">＋</button>
+          </div>
+          <p class="mt-2 text-xs text-muted-foreground">可传多张；第一张默认封面，点“设封面”可更换。</p>
+        </div>
+      </div>
+    </Transition>
+
     <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFile" />
+    <input ref="galleryInput" type="file" accept="image/*" multiple class="hidden" @change="onGalleryFiles" />
     <input ref="aiInput" type="file" accept="image/*" multiple class="hidden" @change="onAIFile" />
   </div>
 </template>
