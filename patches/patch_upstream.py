@@ -386,6 +386,29 @@ def main():
         '    {\n      id: "ui-options",\n      label: "选项配置",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },\n    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
         "collection-locations-tab")
 
+    # 集合页「字段」tab（指向 /templates），并隐藏侧栏「模板」入口
+    rep(coll,
+        '  import MdiFileTree from "~icons/mdi/file-tree";',
+        '  import MdiFileTree from "~icons/mdi/file-tree";\n  import MdiFormTextbox from "~icons/mdi/form-textbox";',
+        "collection-fields-icon")
+    rep(coll,
+        '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
+        '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n    {\n      id: "fields",\n      label: "字段",\n      to: "/templates",\n      icon: MdiFormTextbox,\n    },',
+        "collection-fields-tab")
+    dv_t = open(dv, encoding="utf-8").read()
+    tpl_block = ('    {\n'
+                 '      icon: MdiFileDocumentMultiple,\n'
+                 '      id: 4,\n'
+                 '      active: computed(() => route.path === "/templates"),\n'
+                 '      name: computed(() => t("menu.templates")),\n'
+                 '      to: "/templates",\n'
+                 '    },\n')
+    if tpl_block in dv_t:
+        open(dv, "w", encoding="utf-8").write(dv_t.replace(tpl_block, "", 1))
+        done("nav-hide-templates（模板并入 集合→字段）")
+    else:
+        skip("nav-hide-templates")
+
     # ---- 8. 进销存 biz 路由 ----
     p = f"{be}/app/api/routes.go"
     s = open(p, encoding="utf-8").read()
@@ -423,6 +446,125 @@ def main():
         'import MdiCashMultiple from "~icons/mdi/cash-multiple";',
         'import MdiCashMultiple from "~icons/mdi/cash-multiple";\n  import MdiExport from "~icons/mdi/export";',
         "nav-outbound-icon")
+
+    # ---- 10. 模板模块：保留字段类型 + 可选类型 + 移动友好 + 并入集合 ----
+    # (a) CreateModal：允许选类型，字段行移动友好
+    rep(f"{fe}/components/Template/CreateModal.vue",
+        '    fields: [] as Array<{ id: string; name: string; type: "text"; textValue: string }>,',
+        '    fields: [] as Array<{ id: string; name: string; type: string; textValue: string }>,',
+        "tpl-create-type-ts")
+    cm_old = '''      <div v-if="form.fields.length > 0" class="flex flex-col gap-2">
+        <div v-for="(field, idx) in form.fields" :key="idx" class="flex items-end gap-2">
+          <FormTextField
+            v-model="field.name"
+            :label="$t('components.template.form.field_name')"
+            :max-length="255"
+            class="flex-1"
+          />
+          <FormTextField
+            v-model="field.textValue"
+            :label="$t('components.template.form.default_value')"
+            class="flex-1"
+          />
+          <Button type="button" size="icon" variant="ghost" @click="form.fields.splice(idx, 1)">
+            <MdiDelete class="size-4" />
+          </Button>
+        </div>
+      </div>'''
+    cm_new = '''      <div v-if="form.fields.length > 0" class="flex flex-col gap-2">
+        <div v-for="(field, idx) in form.fields" :key="idx" class="flex flex-wrap items-end gap-2 rounded-lg border p-2">
+          <FormTextField
+            v-model="field.name"
+            :label="$t('components.template.form.field_name')"
+            :max-length="255"
+            class="min-w-[8rem] flex-1"
+          />
+          <label class="flex flex-col gap-1 text-xs text-muted-foreground">类型
+            <select v-model="field.type" class="h-9 rounded-lg border bg-background px-2 text-sm">
+              <option value="text">文本</option>
+              <option value="number">数字</option>
+              <option value="boolean">开关</option>
+            </select>
+          </label>
+          <FormTextField
+            v-if="field.type === 'text'"
+            v-model="field.textValue"
+            :label="$t('components.template.form.default_value')"
+            class="min-w-[8rem] flex-1"
+          />
+          <span v-else class="pb-2 text-xs text-muted-foreground">默认值暂仅支持文本</span>
+          <Button type="button" size="icon" variant="ghost" @click="form.fields.splice(idx, 1)">
+            <MdiDelete class="size-4" />
+          </Button>
+        </div>
+      </div>'''
+    rep(f"{fe}/components/Template/CreateModal.vue", cm_old, cm_new, "tpl-create-fields-mobile")
+
+    # (b) 模板详情/编辑：保留类型（修 bug）+ 可选类型 + 移动友好
+    rep(f"{fe}/pages/template/[id].vue",
+        '    fields: [] as Array<{ id: string; name: string; type: "text"; textValue: string }>,',
+        '    fields: [] as Array<{ id: string; name: string; type: string; textValue: string }>,',
+        "tpl-edit-type-ts")
+    rep(f"{fe}/pages/template/[id].vue",
+        '''      fields: template.value.fields.map(f => ({
+        id: f.id,
+        name: f.name,
+        type: "text" as const,
+        textValue: f.textValue,
+      })),''',
+        '''      fields: template.value.fields.map(f => ({
+        id: f.id,
+        name: f.name,
+        type: f.type || "text",
+        textValue: f.textValue ?? "",
+      })),''',
+        "tpl-edit-preserve-type")
+    id_old = '''        <div v-if="updateData.fields.length > 0" class="flex flex-col gap-2">
+          <div v-for="(field, idx) in updateData.fields" :key="idx" class="flex items-end gap-2">
+            <FormTextField
+              v-model="field.name"
+              :label="$t('components.template.form.field_name')"
+              :max-length="255"
+              class="flex-1"
+            />
+            <FormTextField
+              v-model="field.textValue"
+              :label="$t('components.template.form.default_value')"
+              class="flex-1"
+            />
+            <Button type="button" size="icon" variant="ghost" @click="updateData.fields.splice(idx, 1)">
+              <MdiDelete class="size-4" />
+            </Button>
+          </div>
+        </div>'''
+    id_new = '''        <div v-if="updateData.fields.length > 0" class="flex flex-col gap-2">
+          <div v-for="(field, idx) in updateData.fields" :key="idx" class="flex flex-wrap items-end gap-2 rounded-lg border p-2">
+            <FormTextField
+              v-model="field.name"
+              :label="$t('components.template.form.field_name')"
+              :max-length="255"
+              class="min-w-[8rem] flex-1"
+            />
+            <label class="flex flex-col gap-1 text-xs text-muted-foreground">类型
+              <select v-model="field.type" class="h-9 rounded-lg border bg-background px-2 text-sm">
+                <option value="text">文本</option>
+                <option value="number">数字</option>
+                <option value="boolean">开关</option>
+              </select>
+            </label>
+            <FormTextField
+              v-if="field.type === 'text'"
+              v-model="field.textValue"
+              :label="$t('components.template.form.default_value')"
+              class="min-w-[8rem] flex-1"
+            />
+            <span v-else class="pb-2 text-xs text-muted-foreground">默认值暂仅支持文本</span>
+            <Button type="button" size="icon" variant="ghost" @click="updateData.fields.splice(idx, 1)">
+              <MdiDelete class="size-4" />
+            </Button>
+          </div>
+        </div>'''
+    rep(f"{fe}/pages/template/[id].vue", id_old, id_new, "tpl-edit-fields-mobile")
 
     if FAILS:
         print(f"\n共 {len(FAILS)} 个补丁失败: {', '.join(FAILS)}", file=sys.stderr)
