@@ -575,6 +575,23 @@ def main():
         '    toast.success(t("components.template.toast.updated"));\n    try {\n      const _sr = await $fetch<Record<string, any>>("/api/v1/ledger/sync-fields", { method: "POST", body: {} });\n      if (_sr && typeof _sr.updated === "number") toast.success("已应用到 " + _sr.updated + " 件物品");\n    } catch (_e) { /* ignore */ }\n    template.value = data;',
         "tpl-sync-on-save")
 
+    # ---- 12. 统一集合各 tab 布局 ----
+    rep(f"{fe}/pages/collection/index/tools.vue",
+        '    <BaseContainer class="m-0 flex flex-col gap-4 px-0">',
+        '    <div class="flex flex-col gap-4">',
+        "collection-tools-container-open")
+    p_tools = f"{fe}/pages/collection/index/tools.vue"
+    ts = open(p_tools, encoding="utf-8").read()
+    if "    </BaseContainer>" in ts:
+        open(p_tools, "w", encoding="utf-8").write(ts.replace("    </BaseContainer>", "    </div>", 1))
+        done("collection-tools-container-close")
+    else:
+        skip("collection-tools-container-close")
+    rep(f"{fe}/pages/collection/index/entity-types.vue",
+        '<template>\n  <div>\n    <!-- Create Dialog -->',
+        '<template>\n  <div class="space-y-4">\n    <!-- Create Dialog -->',
+        "collection-entity-types-space")
+
     # ---- 11. 模板编辑去弹框：/templates 与 /template/{id} 重定向到字段页；集合 tab 手机显示文字 ----
     redir_old = '  definePageMeta({\n    middleware: ["auth"],\n  });'
     redir_new = '  definePageMeta({\n    middleware: ["auth", () => navigateTo("/collection/fields", { replace: true })],\n  });'

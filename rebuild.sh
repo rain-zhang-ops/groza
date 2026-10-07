@@ -139,7 +139,8 @@ mkdir -p "$FE_DIR/composables"
 cp "$HOME_DIR/frontend/composables/useOfflineQueue.ts" "$FE_DIR/composables/useOfflineQueue.ts"
 mkdir -p "$FE_DIR/pages/collection/index"
 cp "$HOME_DIR/frontend/pages/collection/ui-options.vue" "$FE_DIR/pages/collection/index/ui-options.vue"
-cp "$HOME_DIR/frontend/pages/collection/fields.vue" "$FE_DIR/pages/collection/fields.vue"
+rm -f "$FE_DIR/pages/collection/fields.vue"
+cp "$HOME_DIR/frontend/pages/collection/fields.vue" "$FE_DIR/pages/collection/index/fields.vue"
 
 # ---------------- 统一补丁（锚点失配即中止）----------------
 log "应用统一补丁 patches/patch_upstream.py"

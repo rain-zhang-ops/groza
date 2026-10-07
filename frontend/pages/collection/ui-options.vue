@@ -64,11 +64,11 @@
 
 <template>
   <div class="space-y-4">
+    <Teleport to="#collection-header-actions" defer>
+      <Button size="sm" :loading="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
+    </Teleport>
     <div class="rounded-md border bg-card p-4">
-      <h2 class="text-lg font-semibold">选项配置</h2>
-      <p class="mt-1 text-sm text-muted-foreground">
-        配置后会作为「物品台账」新增表单和筛选下拉的全局选项（每行一个，或用逗号分隔）。留空的项会回退为按现有物品自动汇总。
-      </p>
+      <p class="text-sm text-muted-foreground">配置全局选项（每行一个或用逗号分隔）；留空回退为按物品自动汇总。</p>
     </div>
 
     <div v-if="loading" class="rounded-md border bg-card p-4 text-sm text-muted-foreground">加载中…</div>
@@ -93,9 +93,6 @@
         必填字段
         <textarea v-model="form.required" rows="3" class="mt-1 w-full rounded-lg border bg-background p-2 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="品牌&#10;进价&#10;（填字段名；台账将标注 * 并做必填校验）"></textarea>
       </label>
-      <div class="md:col-span-2">
-        <Button :disabled="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
-      </div>
     </div>
   </div>
 </template>

@@ -132,93 +132,78 @@
 </script>
 
 <template>
-  <div class="min-h-[70vh] bg-background text-foreground">
-    <div class="mx-auto max-w-3xl p-3 md:p-6" style="padding-bottom: calc(6rem + env(safe-area-inset-bottom))">
-      <header class="mb-3 flex items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">字段设置</h1>
-        <span class="text-xs text-muted-foreground">这些字段会出现在每个物品上（台账可编辑/筛选/导出）</span>
-        <div class="ml-auto flex items-center gap-2">
-          <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
+  <div class="space-y-4">
+    <Teleport to="#collection-header-actions" defer>
+      <Button size="sm" :loading="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
+    </Teleport>
+
+    <div v-if="err" class="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
+    <div v-else-if="loading" class="space-y-2">
+      <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-md border bg-muted/40"></div>
+    </div>
+    <template v-else>
+      <details class="rounded-md border bg-card p-4 text-sm" open>
+        <summary class="cursor-pointer font-medium">说明（点开/收起）</summary>
+        <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+          <li>这些字段会出现在<b>每个物品</b>上，并在「物品台账」中<b>显示为列</b>（可编辑 / 筛选 / 导出）。</li>
+          <li>类型：<b>文本</b> 如 品牌/规格；<b>数字</b> 如 进价/页数（可参与货值、排序）；<b>开关</b> 是/否。</li>
+          <li>保存后会<b>自动应用到所有物品</b>（只补齐缺失字段与类型，<b>不会删除</b>已有数据）。</li>
+          <li>“必填”在 <b>集合 → 选项配置</b> 里设置，台账会标 <span class="text-destructive">*</span> 并做校验。</li>
+          <li>列表里的 <b>↑ ↓</b> 调整的是台账<b>列顺序</b>。</li>
+        </ul>
+      </details>
+
+      <section class="space-y-3 rounded-md border bg-card p-4">
+        <label v-if="templates.length > 1" class="block text-sm font-medium">模板
+          <select v-model="tplId" :class="[inputCls, 'mt-1 w-full text-base']" @change="loadTemplate(tplId)">
+            <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+          </select>
+        </label>
+        <label class="block text-sm font-medium">名称
+          <input v-model="form.name" :class="[inputCls, 'mt-1 w-full text-base']" />
+        </label>
+        <label class="block text-sm font-medium">描述
+          <input v-model="form.description" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="可选" />
+        </label>
+      </section>
+
+      <section class="space-y-3 rounded-md border bg-card p-4">
+        <div class="flex items-center justify-between">
+          <span class="text-sm font-semibold">字段（{{ form.fields.length }}）</span>
+          <Button size="sm" variant="outline" @click="addField"><MdiPlus class="mr-1 size-4" /> 添加字段</Button>
         </div>
-      </header>
-
-      <div v-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
-      <div v-else-if="loading" class="space-y-2">
-        <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
-      </div>
-
-      <template v-else>
-        <details class="mb-3 rounded-xl border bg-card p-3 text-sm" open>
-          <summary class="cursor-pointer font-medium">说明（点开/收起）</summary>
-          <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-            <li>这些字段会出现在<b>每个物品</b>上，并在「物品台账」中<b>显示为列</b>（可编辑 / 筛选 / 导出）。</li>
-            <li>类型：<b>文本</b> 如 品牌/规格；<b>数字</b> 如 进价/页数（可参与货值、排序）；<b>开关</b> 是/否。</li>
-            <li>保存后会<b>自动应用到所有物品</b>（只补齐缺失字段与类型，<b>不会删除</b>已有数据）。</li>
-            <li>“必填”在 <b>集合 → 选项配置</b> 里设置，台账会标 <span class="text-destructive">*</span> 并做校验。</li>
-            <li>列表里的 <b>↑ ↓</b> 调整的是台账<b>列顺序</b>。</li>
-          </ul>
-        </details>
-
-        <section class="mb-3 rounded-xl border bg-card p-3 shadow-sm">
-          <label v-if="templates.length > 1" class="mb-2 block text-xs text-muted-foreground">模板
-            <select v-model="tplId" :class="[inputCls, 'mt-1 w-full text-base']" @change="loadTemplate(tplId)">
-              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-            </select>
-          </label>
-          <label class="block text-xs text-muted-foreground">名称
-            <input v-model="form.name" :class="[inputCls, 'mt-1 w-full text-base']" />
-          </label>
-          <label class="mt-2 block text-xs text-muted-foreground">描述
-            <input v-model="form.description" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="可选" />
-          </label>
-        </section>
-
-        <section class="mb-3 rounded-xl border bg-card p-3 shadow-sm">
-          <div class="mb-2 flex items-center justify-between">
-            <span class="text-sm font-medium">字段（{{ form.fields.length }}）</span>
-            <Button size="sm" variant="outline" @click="addField"><MdiPlus class="mr-1 size-4" /> 添加字段</Button>
-          </div>
-          <div v-if="quickPending.length" class="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>常用：</span>
-            <button v-for="q in quickPending" :key="q.name" class="rounded-full border px-2 py-0.5 transition hover:bg-muted active:scale-95" @click="quickAdd(q)">＋ {{ q.name }}</button>
-          </div>
-          <div class="flex flex-col gap-2">
-            <div v-for="(f, i) in form.fields" :key="i" class="rounded-xl border p-2">
-              <div class="flex items-center gap-2">
-                <input v-model="f.name" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="字段名（如 品牌）" />
-                <select v-model="f.type" :class="[inputCls, 'h-10 w-24 text-base']">
-                  <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.label }}</option>
-                </select>
-              </div>
-              <div class="mt-2 flex items-center gap-2">
-                <span class="w-16 shrink-0 text-xs text-muted-foreground">默认值</span>
-                <input v-if="f.type === 'text'" v-model="f.value" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="默认值（可选）" />
-                <input v-else-if="f.type === 'number'" v-model.number="f.value" type="number" inputmode="decimal" :class="[inputCls, 'h-10 w-28 text-base']" />
-                <input v-else-if="f.type === 'boolean'" v-model="f.value" type="checkbox" class="h-5 w-5 accent-primary" />
-                <div class="ml-auto flex items-center gap-1">
-                  <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveField(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
-                  <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === form.fields.length - 1" title="下移" @click="moveField(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
-                  <button class="grid h-9 w-9 place-items-center rounded-lg border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-95" title="删除" @click="delField(i)"><MdiDelete class="h-4 w-4" /></button>
-                </div>
-              </div>
+        <div v-if="quickPending.length" class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>常用：</span>
+          <button v-for="q in quickPending" :key="q.name" class="rounded-full border px-2 py-0.5 transition hover:bg-muted active:scale-95" @click="quickAdd(q)">＋ {{ q.name }}</button>
+        </div>
+        <div class="flex flex-col gap-3">
+          <div v-for="(f, i) in form.fields" :key="i" class="rounded-lg border p-3">
+            <div class="flex items-center gap-2">
+              <input v-model="f.name" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="字段名（如 品牌）" />
+              <select v-model="f.type" :class="[inputCls, 'h-10 w-24 text-base']">
+                <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.label }}</option>
+              </select>
             </div>
-            <div v-if="!form.fields.length" class="rounded-xl border border-dashed p-4 text-center">
-              <p class="text-sm text-muted-foreground">还没有字段。点右上「添加字段」，或一键添加常用字段：</p>
-              <div class="mt-2 flex flex-wrap justify-center gap-2">
-                <button v-for="q in quickPending" :key="q.name" class="rounded-full border px-3 py-1.5 text-sm transition hover:bg-muted active:scale-95" @click="quickAdd(q)">＋ {{ q.name }}</button>
+            <div class="mt-2 flex items-center gap-2">
+              <span class="w-16 shrink-0 text-xs text-muted-foreground">默认值</span>
+              <input v-if="f.type === 'text'" v-model="f.value" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="默认值（可选）" />
+              <input v-else-if="f.type === 'number'" v-model.number="f.value" type="number" inputmode="decimal" :class="[inputCls, 'h-10 w-28 text-base']" />
+              <input v-else-if="f.type === 'boolean'" v-model="f.value" type="checkbox" class="h-5 w-5 accent-primary" />
+              <div class="ml-auto flex items-center gap-1">
+                <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveField(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
+                <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === form.fields.length - 1" title="下移" @click="moveField(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
+                <button class="grid h-9 w-9 place-items-center rounded-lg border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-95" title="删除" @click="delField(i)"><MdiDelete class="h-4 w-4" /></button>
               </div>
             </div>
           </div>
-        </section>
-      </template>
-    </div>
-
-    <!-- 移动端底部保存条 -->
-    <div v-if="!loading && !err" class="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md" style="padding-bottom: calc(0.5rem + env(safe-area-inset-bottom))">
-      <div class="mx-auto flex max-w-3xl items-center gap-2">
-        <span class="text-xs text-muted-foreground">保存后自动应用到所有物品</span>
-        <Button class="ml-auto" :loading="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
-      </div>
-    </div>
+          <div v-if="!form.fields.length" class="rounded-lg border border-dashed p-4 text-center">
+            <p class="text-sm text-muted-foreground">还没有字段。点右上「添加字段」，或一键添加常用字段：</p>
+            <div class="mt-2 flex flex-wrap justify-center gap-2">
+              <button v-for="q in quickPending" :key="q.name" class="rounded-full border px-3 py-1.5 text-sm transition hover:bg-muted active:scale-95" @click="quickAdd(q)">＋ {{ q.name }}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
