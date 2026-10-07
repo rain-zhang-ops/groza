@@ -1498,6 +1498,7 @@
     switch (dataFilter.value) {
       case "noSafety": return !(r.safety && r.safety > 0);
       case "noImg": return !r.thumb;
+      case "noSerial": return !r.serial;
       case "noPrice": return r.purchase === null && r.sell === null;
       case "soldout": return isSoldOut(r);
       case "low": return isLow(r);

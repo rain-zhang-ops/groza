@@ -443,6 +443,11 @@ def main():
 
     # ---- 9. 侧边栏「进货」入口（物品 之后；用 MdiCashMultiple 图标）----
     rep(dv,
+        '    {\n      icon: MdiMagnify,\n      id: 3,\n      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
+        '    {\n      icon: MdiClipboardCheckOutline,\n      id: 900,\n      active: computed(() => route.path === "/tasks"),\n      name: computed(() => "待办"),\n      to: "/tasks",\n    },\n' +
+        '    {\n      icon: MdiMagnify,\n      id: 3,\n      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
+        "nav-tasks-entry")
+    rep(dv,
         '      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
         '      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },\n    {\n      icon: MdiCashMultiple,\n      id: 901,\n      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },',
         "nav-intake-entry")
@@ -455,6 +460,10 @@ def main():
         'import MdiCashMultiple from "~icons/mdi/cash-multiple";',
         'import MdiCashMultiple from "~icons/mdi/cash-multiple";\n  import MdiExport from "~icons/mdi/export";',
         "nav-outbound-icon")
+    rep(dv,
+        'import MdiExport from "~icons/mdi/export";',
+        'import MdiExport from "~icons/mdi/export";\n  import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";',
+        "nav-tasks-icon")
 
     # ---- 10. 模板模块：保留字段类型 + 可选类型 + 移动友好 + 并入集合 ----
     # (a) CreateModal：允许选类型，字段行移动友好
