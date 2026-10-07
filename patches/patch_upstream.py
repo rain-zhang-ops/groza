@@ -224,6 +224,24 @@ def main():
         '<Meta name="theme-color" content="#2f3e7e" media="(prefers-color-scheme: light)" />\n      <Meta name="theme-color" content="#111725" media="(prefers-color-scheme: dark)" />',
         "pwa-theme-color")
 
+    # ---- 2d. 移动端/PWA 打磨：viewport-fit、iOS 独立应用元信息、品牌色 ----
+    rep(f"{fe}/nuxt.config.ts",
+        '  app: {\n    head: {\n      script: [{ src: "/set-theme.js" }],\n    },\n  },',
+        '  app: {\n    head: {\n'
+        '      viewport: "width=device-width, initial-scale=1, viewport-fit=cover",\n'
+        '      meta: [\n'
+        '        { name: "mobile-web-app-capable", content: "yes" },\n'
+        '        { name: "apple-mobile-web-app-capable", content: "yes" },\n'
+        '        { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },\n'
+        '        { name: "apple-mobile-web-app-title", content: "Groza" },\n'
+        '      ],\n'
+        '      script: [{ src: "/set-theme.js" }],\n    },\n  },',
+        "mobile-head")
+    rep(f"{fe}/app.vue",
+        '<Link rel="mask-icon" href="/mask-icon.svg" color="#5b7f67" />',
+        '<Link rel="mask-icon" href="/mask-icon.svg" color="#2f3e7e" />',
+        "mask-icon-color")
+
     # ---- 2b. PWA Service Worker 策略 ----
     #   /api        -> NetworkOnly（保证库存/流水实时，不被缓存落后）
     #   导航请求    -> NetworkFirst(3s)（新壳优先，离线回退缓存）
