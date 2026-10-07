@@ -358,6 +358,9 @@ func (a *app) handleTrash2Put() errchain.HandlerFunc {
 
 func (a *app) handleTrash2Purge() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requireOwner(r); err != nil {
+			return err
+		}
 		var body struct {
 			Confirm    bool     `json:"confirm"`
 			IDs        []string `json:"ids"`

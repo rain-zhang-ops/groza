@@ -50,7 +50,12 @@
   const loading = ref(true);
   const saving = ref(false);
   const err = ref("");
+  const isOwner = ref(true);
   const inputCls = "rounded-lg border bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/40";
+
+  async function loadMe() {
+    try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
+  }
 
   function genKey() { return "k" + Date.now().toString(36) + Math.floor(Math.random() * 100); }
 
@@ -110,15 +115,17 @@
     finally { saving.value = false; }
   }
 
-  onMounted(load);
+  onMounted(() => { void loadMe(); void load(); });
 </script>
 
 <template>
   <div class="space-y-4">
     <Teleport to="#collection-header-actions" defer>
-      <Button size="sm" variant="outline" :disabled="saving" @click="resetDefault"><MdiRestore class="mr-1 size-4" /> 默认</Button>
-      <Button size="sm" :loading="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
+      <Button size="sm" variant="outline" :disabled="saving || !isOwner" @click="resetDefault"><MdiRestore class="mr-1 size-4" /> 默认</Button>
+      <Button size="sm" :loading="saving" :disabled="!isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
     </Teleport>
+
+    <div v-if="!isOwner" class="rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700">仅管理员（owner）可修改库存配置。</div>
 
     <div v-if="err" class="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
     <div v-else-if="loading" class="space-y-2">

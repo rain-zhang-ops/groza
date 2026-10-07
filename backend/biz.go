@@ -280,6 +280,9 @@ type intakeRollbackBody struct {
 
 func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requireOwner(r); err != nil {
+			return err
+		}
 		var body intakeRollbackBody
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)
@@ -539,6 +542,9 @@ type outboundRollbackBody struct {
 
 func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requireOwner(r); err != nil {
+			return err
+		}
 		var body outboundRollbackBody
 		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 			return validate.NewRequestError(err, http.StatusBadRequest)

@@ -61,6 +61,9 @@ func (a *app) handleGxConfigGet() errchain.HandlerFunc {
 
 func (a *app) handleGxConfigPut() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requireOwner(r); err != nil {
+			return err
+		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
 			return err

@@ -90,6 +90,7 @@
     const opts = labels.map(l => ({ label: l, key: DIM_KEYS[l] || "" })).filter(d => d.key);
     return opts.length ? opts : [{ label: "品牌", key: "brand" }, { label: "系列", key: "series" }];
   });
+  const isOwner = ref(true);
   function optionsFor(key: "size" | "color" | "spec" | "material", preset: string[]): string[] {
     const cfgMap: Record<string, string[]> = { size: uiOptions.value.sizes, color: uiOptions.value.colors, spec: uiOptions.value.specs, material: uiOptions.value.materials };
     const set = new Set([...(cfgMap[key] || []), ...preset]);
@@ -843,6 +844,7 @@
   // 配置驱动（gx/config）：必填与下拉选项按属性配置派生（名称匹配），失败回退原值
   async function applyGxConfig(): Promise<void> {
     try {
+      try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
       const cfg = await $fetch<Record<string, any>>("/api/v1/gx/config");
       const slots = cfg?.media?.slots;
       if (Array.isArray(slots) && slots.length) mediaSlots.value = slots;
@@ -1328,6 +1330,7 @@
   function isTrashed(r: Row): boolean { return !!trashed[r.id]; }
   const trashedCount = computed(() => Object.keys(trashed).filter(k => trashed[k]).length);
   async function purgeOne(r: Row) {
+    if (!isOwner.value) { flash("仅管理员可彻底删除"); return; }
     if (!isTrashed(r)) { flash("仅“待删除”的物品可彻底删除"); return; }
     if (!window.confirm(`彻底删除「${r.name}」？此操作不可恢复。`)) return;
     saving[r.id] = true;
@@ -1340,6 +1343,7 @@
     finally { saving[r.id] = false; }
   }
   async function purgeSelected() {
+    if (!isOwner.value) { flash("仅管理员可彻底删除"); return; }
     const ids = selectedRows.value.filter(r => isTrashed(r)).map(r => r.id);
     if (!ids.length) { flash("所选里没有“待删除”的物品"); return; }
     if (!window.confirm(`彻底删除所选 ${ids.length} 款？不可恢复。`)) return;
@@ -1442,6 +1446,7 @@
   async function closeGallery() { galleryOpen.value = false; await load(); }
 
   async function purgeAll() {
+    if (!isOwner.value) { flash("仅管理员可清空回收站"); return; }
     const n = trashedCount.value;
     if (!n) { flash("回收站为空"); return; }
     if (!window.confirm(`清空回收站（${n} 款）？此操作不可恢复。`)) return;
@@ -1873,7 +1878,7 @@
               </label>
               <span class="inline-block h-2 w-2 rounded-full" :class="wsOk ? 'bg-emerald-500' : 'bg-muted-foreground/40'" :title="wsOk ? '实时同步已连接' : '实时同步未连接'"></span>
               <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
-              <button v-if="trashedCount" :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeAll"><MdiDeleteForever class="h-4 w-4" /> 清空回收站 {{ trashedCount }}</button>
+              <button v-if="trashedCount && isOwner" :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeAll"><MdiDeleteForever class="h-4 w-4" /> 清空回收站 {{ trashedCount }}</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
             </div>
             <!-- 移动：更多菜单 -->
@@ -1888,7 +1893,7 @@
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="copyList"><MdiContentPaste class="mr-1.5 inline h-4 w-4" />复制清单</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportImage"><MdiImage class="mr-1.5 inline h-4 w-4" />导出长图</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="toggleBigFont"><MdiFormatSize class="mr-1.5 inline h-4 w-4" />{{ bigFont ? "标准字号" : "大字号" }}</button>
-                <button v-if="trashedCount" class="block w-full rounded px-2.5 py-2.5 text-left text-destructive transition hover:bg-destructive/10" @click="purgeAll"><MdiDeleteForever class="mr-1.5 inline h-4 w-4" />清空回收站（{{ trashedCount }}）</button>
+                <button v-if="trashedCount && isOwner" class="block w-full rounded px-2.5 py-2.5 text-left text-destructive transition hover:bg-destructive/10" @click="purgeAll"><MdiDeleteForever class="mr-1.5 inline h-4 w-4" />清空回收站（{{ trashedCount }}）</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openScan"><MdiBarcodeScan class="mr-1.5 inline h-4 w-4" />扫码</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="load"><MdiRefresh class="mr-1.5 inline h-4 w-4" />刷新数据</button>
                 <button v-if="undoLast" class="block w-full rounded px-2.5 py-2.5 text-left text-amber-600 transition hover:bg-muted" @click="undo"><MdiUndo class="mr-1.5 inline h-4 w-4" />撤销上一步</button>
@@ -2131,7 +2136,7 @@
           <span class="flex items-center gap-1">加{{ orgCfg.tagGroup.name }}<select v-model="batch.tag" :class="inputCls"><option value="">选择</option><option v-for="t in tags" :key="t.id" :value="t.id">{{ t.name }}</option></select><button :class="[btnGhost, 'active:scale-95']" @click="batchTag">应用</button></span>
           <span class="flex items-center gap-1">分类<select v-model="batch.loc" :class="inputCls"><option value="">选择</option><option v-for="l in locations" :key="l.id" :value="l.id">{{ l.name }}</option></select><button :class="[btnGhost, 'active:scale-95']" @click="batchLoc">应用</button></span>
           <button :class="[btnGhost, 'active:scale-95']" @click="batchTrash"><MdiTrashCanOutline class="h-4 w-4" /> 标记删除</button>
-          <button :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeSelected"><MdiDeleteForever class="h-4 w-4" /> 彻底删除</button>
+          <button v-if="isOwner" :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeSelected"><MdiDeleteForever class="h-4 w-4" /> 彻底删除</button>
           <button class="ml-auto rounded-lg px-3 py-1.5 text-muted-foreground transition hover:bg-muted" @click="clearSel"><MdiClose class="h-4 w-4" /></button>
         </div>
       </Transition>
@@ -2241,7 +2246,7 @@
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
                 <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
               </button>
-              <button v-if="isTrashed(r)" class="inline-flex h-9 items-center gap-1 rounded-lg border border-destructive/40 px-2.5 text-xs font-medium text-destructive transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" />彻底删除</button>
+              <button v-if="isTrashed(r) && isOwner" class="inline-flex h-9 items-center gap-1 rounded-lg border border-destructive/40 px-2.5 text-xs font-medium text-destructive transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" />彻底删除</button>
               <span class="ml-auto">更新 {{ fmtDate(r.updated) }}</span>
             </div>
           </div>
@@ -2344,7 +2349,7 @@
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
                     <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
                   </button>
-                  <button v-if="isTrashed(r)" class="grid h-7 w-7 place-items-center rounded-md border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="彻底删除（不可恢复）" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" /></button>
+                  <button v-if="isTrashed(r) && isOwner" class="grid h-7 w-7 place-items-center rounded-md border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="彻底删除（不可恢复）" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" /></button>
                 </div>
               </td>
             </tr>
