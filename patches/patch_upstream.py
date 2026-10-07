@@ -575,6 +575,16 @@ def main():
         '    toast.success(t("components.template.toast.updated"));\n    try {\n      const _sr = await $fetch<Record<string, any>>("/api/v1/ledger/sync-fields", { method: "POST", body: {} });\n      if (_sr && typeof _sr.updated === "number") toast.success("已应用到 " + _sr.updated + " 件物品");\n    } catch (_e) { /* ignore */ }\n    template.value = data;',
         "tpl-sync-on-save")
 
+    # ---- 11. 模板编辑去弹框：/templates 与 /template/{id} 重定向到字段页；集合 tab 手机显示文字 ----
+    redir_old = '  definePageMeta({\n    middleware: ["auth"],\n  });'
+    redir_new = '  definePageMeta({\n    middleware: ["auth", () => navigateTo("/collection/fields", { replace: true })],\n  });'
+    rep(f"{fe}/pages/templates.vue", redir_old, redir_new, "tpl-list-redirect")
+    rep(f"{fe}/pages/template/[id].vue", redir_old, redir_new, "tpl-detail-redirect")
+    rep(f"{fe}/pages/collection/index.vue",
+        '              <span class="hidden sm:block">{{ t(tab.label) }}</span>',
+        '              <span class="block">{{ t(tab.label) }}</span>',
+        "collection-tabs-label-mobile")
+
     if FAILS:
         print(f"\n共 {len(FAILS)} 个补丁失败: {', '.join(FAILS)}", file=sys.stderr)
         sys.exit(2)
