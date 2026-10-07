@@ -23,7 +23,7 @@ echo "== 离线队列 =="
 if grep -q "export function useOfflineQueue" frontend/composables/useOfflineQueue.ts; then echo "  ok"; else echo "  ERR useOfflineQueue"; fail=1; fi
 
 echo "== 定制文件齐全 =="
-for f in frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/composables/useOfflineQueue.ts backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go patches/patch_upstream.py tests/smoke.py tests/e2e.py; do
+for f in frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go patches/patch_upstream.py tests/smoke.py tests/e2e.py; do
   [ -f "$f" ] && echo "  ok  $f" || { echo "  缺失 $f"; fail=1; }
 done
 

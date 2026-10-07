@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/composables/useOfflineQueue.ts patches/patch_upstream.py"
+CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts patches/patch_upstream.py"
 for f in $CUSTOM_FILES; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
@@ -139,6 +139,7 @@ mkdir -p "$FE_DIR/composables"
 cp "$HOME_DIR/frontend/composables/useOfflineQueue.ts" "$FE_DIR/composables/useOfflineQueue.ts"
 mkdir -p "$FE_DIR/pages/collection/index"
 cp "$HOME_DIR/frontend/pages/collection/ui-options.vue" "$FE_DIR/pages/collection/index/ui-options.vue"
+cp "$HOME_DIR/frontend/pages/collection/fields.vue" "$FE_DIR/pages/collection/fields.vue"
 
 # ---------------- 统一补丁（锚点失配即中止）----------------
 log "应用统一补丁 patches/patch_upstream.py"
