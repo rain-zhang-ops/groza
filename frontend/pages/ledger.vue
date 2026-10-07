@@ -25,6 +25,9 @@
   import MdiDownload from "~icons/mdi/download";
   import MdiDeleteForever from "~icons/mdi/delete-forever";
   import MdiImageMultiple from "~icons/mdi/image-multiple";
+  import MdiImage from "~icons/mdi/image";
+  import MdiFormatSize from "~icons/mdi/format-size";
+  import MdiContentPaste from "~icons/mdi/content-paste";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -156,6 +159,63 @@
     a.click();
     URL.revokeObjectURL(a.href);
     buzz(); flash(`已导出 ${list.length} 行`);
+  }
+
+  function shareText(): string {
+    const list = sorted.value;
+    const lines = [`Groza 清单 · ${new Date().toLocaleDateString()} · ${list.length} 款`];
+    for (const r of list) lines.push(`· ${r.name}${r.serial ? "  @" + r.serial : ""}  ×${r.qty}${r.sell ? "  ¥" + r.sell : ""}`);
+    return lines.join("\n");
+  }
+  async function copyList() {
+    const t = shareText();
+    try { await navigator.clipboard.writeText(t); flash("清单已复制，可直接粘贴"); }
+    catch (_e) { window.prompt("复制清单：", t); }
+    buzz();
+  }
+  function exportImage() {
+    const list = sorted.value.slice(0, 300);
+    if (!list.length) { flash("无可导出项"); return; }
+    const rowH = 36, pad = 28, w = 760;
+    const h = Math.min(pad * 2 + 44 + 34 + list.length * rowH, 16000);
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const ctx = c.getContext("2d"); if (!ctx) return;
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = "#1b1b1f"; ctx.font = "bold 30px -apple-system, PingFang SC, sans-serif";
+    ctx.fillText("Groza 物品清单", pad, pad + 30);
+    ctx.fillStyle = "#555"; ctx.font = "20px -apple-system, PingFang SC, sans-serif";
+    ctx.fillText(`${new Date().toLocaleString()} · 共 ${list.length} 款`, pad, pad + 64);
+    let y = pad + 104;
+    ctx.font = "22px -apple-system, PingFang SC, sans-serif";
+    for (const r of list) {
+      ctx.fillStyle = "#1b1b1f";
+      const label = (r.name + (r.serial ? "  @" + r.serial : "")).slice(0, 34);
+      ctx.fillText(label, pad, y);
+      ctx.fillStyle = "#555";
+      ctx.fillText(`×${r.qty}`, w - pad - 70, y);
+      y += rowH;
+      if (y > c.height - pad) break;
+    }
+    c.toBlob((b) => {
+      if (!b) return;
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = `Groza清单-${new Date().toISOString().slice(0, 10)}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }, "image/png");
+    buzz(); flash("已导出长图");
+  }
+
+  const pulling = ref(false);
+  const refreshing = ref(false);
+  let pullStartY = 0;
+  function onPullStart(e: TouchEvent) { pullStartY = (import.meta.client && window.scrollY <= 0) ? e.touches[0].clientY : 0; }
+  function onPullMove(e: TouchEvent) { if (pullStartY && e.touches[0].clientY - pullStartY > 56) pulling.value = true; }
+  async function onPullEnd() {
+    if (pulling.value && pullStartY) { refreshing.value = true; try { await load(); } finally { refreshing.value = false; } }
+    pulling.value = false; pullStartY = 0;
   }
 
   // ---------- 复制一件 ----------
@@ -627,7 +687,7 @@
   const onlyLow = ref(false);
   const dataFilter = ref("");
   const showSummary = ref(false);
-  const summaryDim = ref<"brand" | "size" | "spec">("brand");
+  const summaryDim = ref<"brand" | "size" | "spec" | "series">("brand");
   const preview = ref<string | null>(null);
   const undoLast = ref<{ label: string; items: UndoItem[] } | null>(null);
   const filterOpen = ref(false);
@@ -642,7 +702,7 @@
   const saving = reactive<Record<string, boolean>>({});
   const preEdit = reactive<Record<string, { qty: number; purchase: number | null; sell: number | null; safety: number | null }>>({});
 
-  const filter = reactive({ brand: "", size: "", spec: "", color: "", material: "", q: "" });
+  const filter = reactive({ brand: "", size: "", spec: "", color: "", material: "", q: "", series: "" });
   const sort = reactive<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
   const cols = reactive({
     size: true, spec: true, color: true, material: true, purchase: true, sell: true,
@@ -688,33 +748,87 @@
       count: null, updated: e.updatedAt || "",
     } as Row;
   }
+  function seriesKey(r: Row): string {
+    let x = String(r.name || "");
+    x = x.replace(/[（(][^）)]*[)）]/g, "").trim();
+    return x || String(r.name || "");
+  }
+  const seriesOptions = computed(() => {
+    const set = new Set<string>();
+    for (const r of rows.value) { const k = seriesKey(r); if (k) set.add(k); }
+    return [...set].sort((a, b) => a.localeCompare(b, "zh"));
+  });
+  function nq(x: string): string { return String(x || "").toLowerCase().replace(/\s+/g, ""); }
+
+  // 搜索历史
+  const searchHistory = ref<string[]>([]);
+  try { searchHistory.value = JSON.parse(localStorage.getItem("groza.searchhist") || "[]"); } catch (_e) { searchHistory.value = []; }
+  function pushSearch(v: string) {
+    const t = v.trim();
+    if (t.length < 2) return;
+    searchHistory.value = [t, ...searchHistory.value.filter(x => x !== t)].slice(0, 10);
+    try { localStorage.setItem("groza.searchhist", JSON.stringify(searchHistory.value)); } catch (_e) { /* ignore */ }
+  }
+  function hl(name: string): string {
+    const q = (filter.q || "").trim();
+    const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    if (!q) return esc(name);
+    const i = name.toLowerCase().indexOf(q.toLowerCase());
+    if (i < 0) return esc(name);
+    return esc(name.slice(0, i)) + "<mark class=\"rounded bg-amber-200/70 px-0.5 text-foreground\">" + esc(name.slice(i, i + q.length)) + "</mark>" + esc(name.slice(i + q.length));
+  }
+
+  // 大字号
+  const bigFont = ref(false);
+  function applyBigFont() { if (import.meta.client) document.documentElement.style.fontSize = bigFont.value ? "18px" : ""; }
+  function toggleBigFont() {
+    bigFont.value = !bigFont.value;
+    try { localStorage.setItem("groza.bigfont", bigFont.value ? "1" : "0"); } catch (_e) { /* ignore */ }
+    applyBigFont(); buzz();
+  }
+
+  // 离线只读缓存
+  const CACHE_KEY = "groza.ledger.cache";
+  const offlineReadonly = ref(false);
+  function applyAgg(agg: Record<string, any>): void {
+    tags.value = agg.tags || [];
+    locations.value = (agg.locations || []).map((x: Record<string, any>) => ({ id: x.id, name: x.name }));
+    uiOptions.value = {
+      sizes: agg.uiOptions?.sizes || [], specs: agg.uiOptions?.specs || [],
+      colors: agg.uiOptions?.colors || [], materials: agg.uiOptions?.materials || [],
+    };
+    for (const k of Object.keys(trashEntries)) delete trashEntries[k];
+    const ent = agg.trash?.entries || {};
+    for (const id of Object.keys(ent)) { trashEntries[id] = ent[id]; trashed[id] = true; }
+    rows.value = (agg.items as Array<Record<string, any>>).map(e => toRow({
+      ...e,
+      raw: {
+        ...e,
+        entityType: { id: TYPE_ID },
+        parent: (agg.locations as Array<Record<string, any>> || []).find(l => l.name === e.parent) || null,
+        notes: e.notes || "",
+      },
+    }));
+  }
+
   async function load() {
     loading.value = true;
     err.value = "";
     try {
-      const agg = await $fetch<Record<string, any>>("/api/v1/ledger").catch(() => null);
+      let agg: Record<string, any> | null = null;
+      try { agg = await $fetch<Record<string, any>>("/api/v1/ledger"); } catch (_e) { agg = null; }
       if (agg && Array.isArray(agg.items)) {
-        tags.value = agg.tags || [];
-        locations.value = (agg.locations || []).map((n: Record<string, any>) => ({ id: n.id, name: n.name }));
-        uiOptions.value = {
-          sizes: agg.uiOptions?.sizes || [], specs: agg.uiOptions?.specs || [],
-          colors: agg.uiOptions?.colors || [], materials: agg.uiOptions?.materials || [],
-        };
-        for (const k of Object.keys(trashEntries)) delete trashEntries[k];
-        const ent = agg.trash?.entries || {};
-        for (const id of Object.keys(ent)) { trashEntries[id] = ent[id]; trashed[id] = true; }
-        rows.value = (agg.items as Array<Record<string, any>>).map(e => toRow({
-          ...e,
-          raw: {
-            ...e,
-            entityType: { id: TYPE_ID },
-            parent: (agg.locations as Array<Record<string, any>> || []).find(l => l.name === e.parent) || null,
-            notes: e.notes || "",
-          },
-        }));
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(agg)); } catch (_e) { /* ignore */ }
+        offlineReadonly.value = false;
+        applyAgg(agg);
         loading.value = false;
         return;
       }
+      // 离线：使用缓存（只读）
+      try {
+        const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "null");
+        if (c && Array.isArray(c.items)) { applyAgg(c); offlineReadonly.value = true; loading.value = false; return; }
+      } catch (_e) { /* ignore */ }
       const [list, tagList, tree, opts, trashData] = await Promise.all([
         $fetch<{ items?: Array<Record<string, any>> }>("/api/v1/entities", { params: { pageSize: 1000 } }),
         $fetch<Array<{ id: string; name: string }>>("/api/v1/tags"),
@@ -763,14 +877,14 @@
   // ---------- 视图状态 / URL / 记忆 ----------
   function view() {
     return {
-      brand: filter.brand, size: filter.size, spec: filter.spec, color: filter.color, material: filter.material, q: filter.q,
+      brand: filter.brand, size: filter.size, spec: filter.spec, color: filter.color, material: filter.material, q: filter.q, series: filter.series,
       onlyLow: onlyLow.value ? "1" : "", data: dataFilter.value, count: countMode.value ? "1" : "",
       sort: sort.key, dir: String(sort.dir),
     };
   }
   function applyView(v: Record<string, any>) {
     filter.brand = v.brand || ""; filter.size = v.size || ""; filter.spec = v.spec || "";
-    filter.color = v.color || ""; filter.material = v.material || ""; filter.q = v.q || "";
+    filter.color = v.color || ""; filter.material = v.material || ""; filter.q = v.q || ""; filter.series = v.series || "";
     onlyLow.value = v.onlyLow === "1" || v.onlyLow === true;
     dataFilter.value = v.data || "";
     countMode.value = v.count === "1" || v.count === true;
@@ -790,6 +904,8 @@
   watch([filter, sort, onlyLow, countMode, dataFilter], syncView, { deep: true });
   watch([filter, sort, onlyLow, countMode, dataFilter, pageSize], () => { page.value = 1; }, { deep: true });
   watch(cols, () => localStorage.setItem("hb.ledger.cols", JSON.stringify(cols)), { deep: true });
+  let histTimer: number | undefined;
+  watch(() => filter.q, (v) => { window.clearTimeout(histTimer); histTimer = window.setTimeout(() => pushSearch(v || ""), 1500); });
 
   // ---------- PWA 安装 / 通知 ----------
   const installEvt = ref<any>(null);
@@ -978,11 +1094,12 @@
     syncOq();
     window.addEventListener("hb:offline-queue", syncOq);
     connectWS();
+    try { bigFont.value = localStorage.getItem("groza.bigfont") === "1"; applyBigFont(); } catch (_e) { /* ignore */ }
     const savedCols = localStorage.getItem("hb.ledger.cols");
     if (savedCols) { try { Object.assign(cols, JSON.parse(savedCols)); } catch (_e) { /* ignore */ } }
     const savedPresets = localStorage.getItem("hb.ledger.presets");
     if (savedPresets) { try { presets.value = JSON.parse(savedPresets); } catch (_e) { /* ignore */ } }
-    const hasQ = Object.keys(route.query).some(k => ["brand", "size", "spec", "color", "q", "onlyLow", "count", "data", "sort", "dir"].includes(k));
+    const hasQ = Object.keys(route.query).some(k => ["brand", "size", "spec", "color", "q", "series", "onlyLow", "count", "data", "sort", "dir"].includes(k));
     if (hasQ) applyView(route.query as Record<string, any>);
     else {
       const saved = localStorage.getItem("hb.ledger.view");
@@ -1293,7 +1410,8 @@
     (!filter.spec || r.spec === filter.spec) &&
     (!filter.color || r.color === filter.color) &&
     (!filter.material || r.material === filter.material) &&
-    (!filter.q || r.name.toLowerCase().includes(filter.q.toLowerCase()) || String(r.serial || "").toLowerCase().includes(filter.q.toLowerCase()) || String(r.raw.assetId || "").toLowerCase().includes(filter.q.toLowerCase())) &&
+    (!filter.series || seriesKey(r) === filter.series) &&
+    (!filter.q || nq(r.name).includes(nq(filter.q)) || nq(r.brand).includes(nq(filter.q)) || nq(r.size).includes(nq(filter.q)) || nq(r.serial).includes(nq(filter.q)) || nq(String(r.raw.assetId || "")).includes(nq(filter.q))) &&
     (!onlyLow.value || isLow(r)) &&
     dataMatch(r),
   ));
@@ -1359,7 +1477,7 @@
   const summaryGroups = computed(() => {
     const m: Record<string, { qty: number; cost: number }> = {};
     for (const r of filtered.value) {
-      const k = String(r[summaryDim.value] || "（未填）");
+      const k = summaryDim.value === "series" ? seriesKey(r) : String((r as Record<string, any>)[summaryDim.value] || "（未填）");
       if (!m[k]) m[k] = { qty: 0, cost: 0 };
       m[k].qty += r.qty || 0; m[k].cost += (r.purchase ?? 0) * (r.qty || 0);
     }
@@ -1526,7 +1644,9 @@
 </script>
 
 <template>
-  <div class="overflow-x-clip bg-background text-foreground">
+  <div class="overflow-x-clip bg-background text-foreground" @touchstart.passive="onPullStart" @touchmove.passive="onPullMove" @touchend="onPullEnd">
+    <div v-if="offlineReadonly" class="bg-amber-500/15 px-3 py-1.5 text-center text-xs font-medium text-amber-700">离线只读：显示最近缓存，联网后自动更新</div>
+    <div v-if="pulling" class="flex justify-center py-2"><span class="rounded-full bg-primary/10 px-3 py-1 text-xs text-primary">{{ refreshing ? "刷新中…" : "松开刷新" }}</span></div>
     <div class="mx-auto max-w-[1700px] p-3 md:p-6" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
       <!-- 顶栏 -->
       <header class="mb-4">
@@ -1549,6 +1669,9 @@
               <button :class="[btnGhost, 'active:scale-95']" @click="qualityOpen = true"><MdiClipboardCheckOutline class="h-4 w-4" /> 数据体检</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="importOpen = true"><MdiFileImportOutline class="h-4 w-4" /> 批量导入</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="exportCSV"><MdiDownload class="h-4 w-4" /> 导出CSV</button>
+              <button :class="[btnGhost, 'active:scale-95']" @click="copyList"><MdiContentPaste class="h-4 w-4" /> 复制清单</button>
+              <button :class="[btnGhost, 'active:scale-95']" @click="exportImage"><MdiImage class="h-4 w-4" /> 长图</button>
+              <button :class="[btnGhost, bigFont ? 'border-primary text-primary' : '', 'active:scale-95']" @click="toggleBigFont"><MdiFormatSize class="h-4 w-4" /> {{ bigFont ? "标准字号" : "大字号" }}</button>
               <Transition name="pop">
                 <button v-if="undoLast" class="inline-flex items-center gap-1 rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-600 transition-all hover:bg-amber-500/20 active:scale-95" @click="undo"><MdiUndo class="h-4 w-4" /> 撤销</button>
               </Transition>
@@ -1569,6 +1692,9 @@
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="qualityOpen = true"><MdiClipboardCheckOutline class="mr-1.5 inline h-4 w-4" />数据体检</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="importOpen = true"><MdiFileImportOutline class="mr-1.5 inline h-4 w-4" />批量导入</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportCSV"><MdiDownload class="mr-1.5 inline h-4 w-4" />导出CSV</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="copyList"><MdiContentPaste class="mr-1.5 inline h-4 w-4" />复制清单</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportImage"><MdiImage class="mr-1.5 inline h-4 w-4" />导出长图</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="toggleBigFont"><MdiFormatSize class="mr-1.5 inline h-4 w-4" />{{ bigFont ? "标准字号" : "大字号" }}</button>
                 <button v-if="trashedCount" class="block w-full rounded px-2.5 py-2.5 text-left text-destructive transition hover:bg-destructive/10" @click="purgeAll"><MdiDeleteForever class="mr-1.5 inline h-4 w-4" />清空回收站（{{ trashedCount }}）</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openScan"><MdiBarcodeScan class="mr-1.5 inline h-4 w-4" />扫码</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="load"><MdiRefresh class="mr-1.5 inline h-4 w-4" />刷新数据</button>
@@ -1676,10 +1802,19 @@
               <option value="">全部</option><option v-for="v in sizes" :key="v" :value="v">{{ v }}</option>
             </select>
           </label>
+          <label class="flex flex-col gap-1 text-xs text-muted-foreground">系列
+            <select v-model="filter.series" :class="inputCls">
+              <option value="">全部</option><option v-for="v in seriesOptions" :key="v" :value="v">{{ v }}</option>
+            </select>
+          </label>
           <label class="relative flex flex-col gap-1 text-xs text-muted-foreground">关键字
             <MdiMagnify class="pointer-events-none absolute bottom-2 left-2 h-4 w-4 text-muted-foreground" />
-            <input v-model="filter.q" placeholder="搜索名称…" :class="[inputCls, 'pl-7']" />
+            <input v-model="filter.q" placeholder="名称/品牌/编号/库位…" :class="[inputCls, 'pl-7']" @keyup.enter="pushSearch(filter.q)" />
           </label>
+          <div v-if="searchHistory.length" class="flex flex-wrap items-center gap-1">
+            <span class="text-xs text-muted-foreground">常用</span>
+            <button v-for="h in searchHistory.slice(0, 6)" :key="h" class="rounded-full border px-2 py-0.5 text-xs transition hover:bg-muted" @click="filter.q = h">{{ h }}</button>
+          </div>
           <label class="flex flex-col gap-1 text-xs text-muted-foreground">数据完整性
             <select v-model="dataFilter" :class="inputCls">
               <option value="">全部</option>
@@ -1773,6 +1908,7 @@
               <option value="brand">按品牌</option>
               <option value="size">按尺寸</option>
               <option value="spec">按规格</option>
+              <option value="series">按系列</option>
             </select>
           </div>
           <div v-for="g in summaryGroups" :key="g.name" class="mb-1.5 flex items-center gap-3">
@@ -1838,7 +1974,7 @@
               <button v-else class="grid h-14 w-14 shrink-0 place-items-center self-start rounded-xl border border-dashed bg-muted/60 text-muted-foreground transition active:scale-95" @click="pickPhoto(r)"><MdiCamera class="h-5 w-5" /></button>
               <div class="min-w-0 flex-1">
                 <div class="flex items-start gap-1.5">
-                  <NuxtLink :to="`/item/${r.id}`" class="line-clamp-2 flex-1 text-base font-semibold leading-snug text-foreground">{{ r.name }}</NuxtLink>
+                  <NuxtLink :to="`/item/${r.id}`" class="line-clamp-2 flex-1 text-base font-semibold leading-snug text-foreground"><span v-html="hl(r.name)"></span></NuxtLink>
                   <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-medium text-red-600">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
                   <span v-if="isLow(r)" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
                   <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">售罄</span>
@@ -2028,6 +2164,11 @@
             <label class="block text-xs text-muted-foreground">材质
               <select v-model="filter.material" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
                 <option value="">全部</option><option v-for="v in materials" :key="v" :value="v">{{ v }}</option>
+              </select>
+            </label>
+            <label class="block text-xs text-muted-foreground">系列
+              <select v-model="filter.series" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+                <option value="">全部</option><option v-for="v in seriesOptions" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">数据完整性

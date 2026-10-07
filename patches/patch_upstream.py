@@ -207,6 +207,18 @@ def main():
     patch_colors(fe)
     rebrand_locale(fe)
     patch_dark(fe)
+    # 大字号：set-theme.js 启动即应用（跟随本地偏好）
+    p_theme = f"{fe}/public/set-theme.js"
+    try:
+        ts = open(p_theme, encoding="utf-8").read()
+        if "groza.bigfont" not in ts:
+            ts += '\ntry { if (localStorage.getItem("groza.bigfont") === "1") { document.documentElement.style.fontSize = "18px"; } } catch (e) {}\n'
+            open(p_theme, "w", encoding="utf-8").write(ts)
+            done("bigfont-boot")
+        else:
+            skip("bigfont-boot")
+    except OSError:
+        fail("bigfont-boot", "set-theme.js 不可读")
     rep(f"{fe}/app.vue",
         '<Meta name="theme-color" content="#5b7f67" />',
         '<Meta name="theme-color" content="#2f3e7e" media="(prefers-color-scheme: light)" />\n      <Meta name="theme-color" content="#111725" media="(prefers-color-scheme: dark)" />',
