@@ -12,30 +12,6 @@ CREATE TABLE IF NOT EXISTS gx_schema_version (
   applied_at TEXT NOT NULL
 );
 
--- ---------- 属性定义（配置） ----------
-CREATE TABLE IF NOT EXISTS gx_attribute_def (
-  id             TEXT PRIMARY KEY,
-  key            TEXT NOT NULL UNIQUE,   -- 稳定键（创建后不可改）
-  name           TEXT NOT NULL,          -- 显示名
-  type           TEXT NOT NULL CHECK(type IN ('text','number','boolean','date','select','multiselect')),
-  required       INTEGER NOT NULL DEFAULT 0,
-  show_column    INTEGER NOT NULL DEFAULT 1,
-  filterable     INTEGER NOT NULL DEFAULT 1,
-  sortable       INTEGER NOT NULL DEFAULT 0,
-  unit           TEXT,
-  sort_order     INTEGER NOT NULL DEFAULT 0,
-  default_value  TEXT,
-  options_source TEXT NOT NULL DEFAULT 'manual'   -- manual|locations|tags
-);
-
-CREATE TABLE IF NOT EXISTS gx_attribute_option (
-  id         TEXT PRIMARY KEY,
-  def_id     TEXT NOT NULL REFERENCES gx_attribute_def(id) ON DELETE CASCADE,
-  value      TEXT NOT NULL,
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  UNIQUE(def_id, value)
-);
-
 -- ---------- 物品元数据（A1 混合模型：JSON 全量 + 高频字段冗余列） ----------
 -- 冗余列随配置动态增删（ALTER TABLE）；下列为「默认模板=现状」的初始集。
 CREATE TABLE IF NOT EXISTS gx_item_meta (
@@ -93,22 +69,6 @@ CREATE TABLE IF NOT EXISTS gx_document_line (
 );
 CREATE INDEX IF NOT EXISTS ix_docline_doc   ON gx_document_line(document_id);
 CREATE INDEX IF NOT EXISTS ix_doc_kind_ts   ON gx_document(kind, created_at);
-
--- ---------- 配置（单行 JSON + 历史快照，reset=切版本） ----------
-CREATE TABLE IF NOT EXISTS gx_config (
-  id         INTEGER PRIMARY KEY CHECK(id = 1),
-  version    INTEGER NOT NULL,
-  json       TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS gx_config_history (
-  id         TEXT PRIMARY KEY,
-  version    INTEGER NOT NULL,
-  json       TEXT NOT NULL,
-  reason     TEXT,
-  created_at TEXT NOT NULL
-);
 
 -- ---------- 配置（按集合，v3 起）：group_id 为主键 ----------
 CREATE TABLE IF NOT EXISTS gx_group_config (

@@ -423,6 +423,6 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 ### 已知限制 / 待办
 - `gx_item_meta` 以物品 ID 为键（天然按集合正确）；配置/单据/审计已按集合隔离。
 - 内部表 `gx_idempotency`、`gx_ai_cache` 仍为全局（应用实际用的是 `/data/idem.json` 与 `ai-cache/` 文件），未按集合隔离。
-- 迁移期遗留的 `gx_config`/`gx_config_history`/`gx_attribute_def`/`gx_attribute_option` 表已不再被应用读取（配置以 `gx_group_config` 为准），保留仅为历史兼容。
+- 迁移期遗留的 `gx_config`/`gx_config_history`/`gx_attribute_def`/`gx_attribute_option` 已确认无独有数据（配置以 `gx_group_config` 为准）并**已清理**（`--ensure` 会 `DROP`）。
 - 移动端集合选择器若在折叠菜单内，需先选择集合后自研请求才带 `X-Tenant`；未选择时后端回退默认集合。
 - 上游 Homebox 内核未改；未来升级仅需重跑补丁 + `--ensure` + 校验。

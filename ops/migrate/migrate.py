@@ -52,9 +52,8 @@ def apply_schema(t):
         t.executescript(f.read())
     # 清空 gx_ 数据表（幂等重跑）
     for tbl in ["gx_audit_log", "gx_document_line", "gx_document",
-                "gx_attribute_option", "gx_attribute_def",
-                "gx_config_history", "gx_config", "gx_idempotency",
-                "gx_ai_cache", "gx_schema_version"]:
+                "gx_group_config_history", "gx_group_config",
+                "gx_idempotency", "gx_ai_cache", "gx_schema_version"]:
         t.execute(f"DELETE FROM {tbl}")
     t.commit()
 
@@ -75,10 +74,13 @@ def ensure_schema(t):
         for col in cols:
             if col not in have:
                 t.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT")
+    # 清理已被取代的陈旧表（数据已在 gx_group_config / 源头，冗余）
+    for tbl in ["gx_attribute_option", "gx_attribute_def", "gx_config_history", "gx_config"]:
+        t.execute(f"DROP TABLE IF EXISTS {tbl}")
     t.commit()
 
 def backfill_groups(t):
-    """把历史 gx 数据归属到当前唯一集合；并把 gx_config 迁到 gx_group_config。"""
+    """把历史 gx 数据归属到当前唯一集合；并（首次）补齐集合配置。"""
     try:
         row = t.execute("SELECT id FROM groups LIMIT 1").fetchone()
         gid = row[0] if row else None
@@ -88,15 +90,6 @@ def backfill_groups(t):
         return
     for tbl in ["gx_audit_log", "gx_document", "gx_document_line"]:
         t.execute(f"UPDATE {tbl} SET group_id=? WHERE group_id IS NULL", (gid,))
-    n = t.execute("SELECT COUNT(*) FROM gx_group_config").fetchone()[0]
-    if n == 0:
-        r = t.execute("SELECT version,json,updated_at FROM gx_config WHERE id=1").fetchone()
-        if r:
-            t.execute("INSERT INTO gx_group_config (group_id,version,json,updated_at) VALUES (?,?,?,?)",
-                      (gid, r[0], r[1], r[2]))
-        for h in t.execute("SELECT version,json,reason,created_at FROM gx_config_history"):
-            t.execute("INSERT INTO gx_group_config_history (id,group_id,version,json,reason,created_at) VALUES (?,?,?,?,?,?)",
-                      (str(uuid.uuid4()), gid, h[0], h[1], h[2], h[3]))
     t.execute("INSERT OR IGNORE INTO gx_schema_version (version,applied_at) VALUES (3,?)", (now_iso(),))
     t.commit()
 
@@ -167,28 +160,15 @@ def build_config_json(defs, options, tags):
 def migrate_config(s, t, data_dir):
     defs, options, required, red_keys = build_attr_defs(s, data_dir)
     tags = [r[0] for r in s.execute("SELECT name FROM tags ORDER BY name")]
-    for i, d in enumerate(defs):
-        t.execute(
-            "INSERT INTO gx_attribute_def (id,key,name,type,required,show_column,"
-            "filterable,sortable,unit,sort_order,default_value,options_source)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (str(uuid.uuid4()), d["key"], d["name"], d["type"], d["required"],
-             d["show_column"], d["filterable"], d["sortable"], d["unit"],
-             d["sort_order"], d["default_value"], d["options_source"]))
-        for j, val in enumerate(options.get(d["key"], [])):
-            t.execute("INSERT INTO gx_attribute_option (id,def_id,value,sort_order)"
-                      " VALUES (?,?,?,?)",
-                      (str(uuid.uuid4()),
-                       t.execute("SELECT id FROM gx_attribute_def WHERE key=?",
-                                 (d["key"],)).fetchone()[0],
-                       val, j))
     cfg = build_config_json(defs, options, tags)
-    t.execute("INSERT INTO gx_config (id,version,json,updated_at) VALUES (1,1,?,?)",
-              (json.dumps(cfg, ensure_ascii=False), now_iso()))
-    t.execute("INSERT INTO gx_config_history (id,version,json,reason,created_at)"
-              " VALUES (?,1,?,?,?)",
-              (str(uuid.uuid4()), json.dumps(cfg, ensure_ascii=False),
-               "migration: 默认模板=现状", now_iso()))
+    row = t.execute("SELECT id FROM groups LIMIT 1").fetchone()
+    gid = row[0] if row else ""
+    js = json.dumps(cfg, ensure_ascii=False)
+    t.execute("INSERT OR REPLACE INTO gx_group_config (group_id,version,json,updated_at)"
+              " VALUES (?,1,?,?)", (gid, js, now_iso()))
+    t.execute("INSERT INTO gx_group_config_history (id,group_id,version,json,reason,created_at)"
+              " VALUES (?,?,1,?,?,?)",
+              (str(uuid.uuid4()), gid, js, "migration: 默认模板=现状", now_iso()))
     return defs, red_keys
 
 # ---------------------------------------------------------------- 物品
@@ -528,8 +508,6 @@ def verify(a):
     n_items = src.execute("SELECT COUNT(*) FROM entities e JOIN entity_types et"
                           " ON e.entity_type_entities=et.id WHERE et.is_location=0").fetchone()[0]
     cmp("物品数", t.execute("SELECT COUNT(*) FROM gx_item_meta").fetchone()[0], n_items)
-    cmp("属性定义数", t.execute("SELECT COUNT(*) FROM gx_attribute_def").fetchone()[0],
-        src.execute("SELECT COUNT(*) FROM template_fields").fetchone()[0])
     n_photos = src.execute("SELECT COUNT(*) FROM attachments WHERE type='photo'").fetchone()[0]
     n_slot = t.execute("SELECT COUNT(*) FROM attachments WHERE title IN ('front','detail')").fetchone()[0]
     cmp("照片槽位标注", n_slot, n_photos)
