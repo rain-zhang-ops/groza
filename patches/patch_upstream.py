@@ -329,7 +329,10 @@ def main():
         add = anchor + ("\n\n"
                         "\t\tr.Get(\"/biz/intakes\", chain.ToHandlerFunc(a.handleBizIntakes(), userMW...))\n"
                         "\t\tr.Post(\"/biz/intake\", chain.ToHandlerFunc(a.handleBizIntakeCreate(), userMW...))\n"
-                        "\t\tr.Post(\"/biz/intake/rollback\", chain.ToHandlerFunc(a.handleBizIntakeRollback(), userMW...))")
+                        "\t\tr.Post(\"/biz/intake/rollback\", chain.ToHandlerFunc(a.handleBizIntakeRollback(), userMW...))\n"
+                        "\t\tr.Get(\"/biz/outbounds\", chain.ToHandlerFunc(a.handleBizOutbounds(), userMW...))\n"
+                        "\t\tr.Post(\"/biz/outbound\", chain.ToHandlerFunc(a.handleBizOutboundCreate(), userMW...))\n"
+                        "\t\tr.Post(\"/biz/outbound/rollback\", chain.ToHandlerFunc(a.handleBizOutboundRollback(), userMW...))")
         pub_anchor = 'r.Get("/qrcode", chain.ToHandlerFunc(v1Ctrl.HandleGenerateQRCode(), assetMW...))'
         pub_add = pub_anchor + '\n\t\tr.Get("/biz/images/{attachment}", chain.ToHandlerFunc(a.handleBizImage()))\n\t\tr.Get("/biz/images/{attachment}/{thumb}", chain.ToHandlerFunc(a.handleBizImage()))\n\t\tr.Get("/qr", chain.ToHandlerFunc(a.handleQRPublic()))'
         if anchor not in s or pub_anchor not in s:
@@ -344,6 +347,15 @@ def main():
         '      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },',
         '      active: computed(() => route.path === "/ledger"),\n      name: computed(() => "物品"),\n      to: "/ledger",\n    },\n    {\n      icon: MdiCashMultiple,\n      id: 901,\n      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },',
         "nav-intake-entry")
+    # 侧栏「出货」入口（进货 之后）
+    rep(dv,
+        '      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },',
+        '      active: computed(() => route.path === "/intake"),\n      name: computed(() => "进货"),\n      to: "/intake",\n    },\n    {\n      icon: MdiExport,\n      id: 902,\n      active: computed(() => route.path === "/outbound"),\n      name: computed(() => "出货"),\n      to: "/outbound",\n    },',
+        "nav-outbound-entry")
+    rep(dv,
+        'import MdiCashMultiple from "~icons/mdi/cash-multiple";',
+        'import MdiCashMultiple from "~icons/mdi/cash-multiple";\n  import MdiExport from "~icons/mdi/export";',
+        "nav-outbound-icon")
 
     if FAILS:
         print(f"\n共 {len(FAILS)} 个补丁失败: {', '.join(FAILS)}", file=sys.stderr)

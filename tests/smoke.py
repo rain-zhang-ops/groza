@@ -124,6 +124,23 @@ if token:
         st, b = req("/api/v1/biz/intake/rollback", token, "POST", {"intakeId": intake_id})
         check("入库回滚", st == 200 and json.loads(b).get("intake", {}).get("rolledBack"), f"HTTP {st}")
 
+        # 出库（纯库存：扣减/回滚/超量拒绝）
+        st, b = req("/api/v1/biz/outbound", token, "POST",
+                    {"reason": "冒烟测试", "items": [{"entityId": eid, "count": 2}]})
+        ob_id = json.loads(b).get("outbound", {}).get("id") if st == 200 else None
+        check("出库 /biz/outbound", st == 200 and bool(ob_id), f"HTTP {st}")
+
+        st, b = req("/api/v1/biz/outbounds", token)
+        ok = st == 200 and any(o.get("id") == ob_id for o in json.loads(b))
+        check("出库单列表 /biz/outbounds", ok, f"HTTP {st}")
+
+        st, _ = req("/api/v1/biz/outbound", token, "POST",
+                    {"reason": "超量", "items": [{"entityId": eid, "count": 9999}]})
+        check("超量出库应被拒", st == 400, f"HTTP {st}")
+
+        st, b = req("/api/v1/biz/outbound/rollback", token, "POST", {"outboundId": ob_id})
+        check("出库回滚", st == 200 and json.loads(b).get("outbound", {}).get("rolledBack"), f"HTTP {st}")
+
         # 标记删除 -> 回收站清除（覆盖 trash2 + purge + 审计）
         st, _ = req("/api/v1/trash2", token, "PUT", {"ids": [eid]})
         check("标记删除 /trash2", st == 200, f"HTTP {st}")

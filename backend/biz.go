@@ -34,6 +34,7 @@ import (
 const (
 	bizDir        = "/data/biz"
 	intakesPath   = bizDir + "/intakes.json"
+	outboundsPath = bizDir + "/outbounds.json"
 	imgIndexPath  = bizDir + "/img_index.json"
 	bizTimeLayout = "2006-01-02T15:04:05.000000"
 )
@@ -410,6 +411,176 @@ func (a *app) handleBizImage() errchain.HandlerFunc {
 			return validate.NewRequestError(fmt.Errorf("bad path"), http.StatusBadRequest)
 		}
 		return streamAttachmentFile(w, r, cleaned)
+	}
+}
+
+// ---------------- 出库单（纯库存：扣减，无收银/报表） ----------------
+
+type outboundItem struct {
+	EntityID string  `json:"entityId"`
+	Name     string  `json:"name,omitempty"`
+	Count    float64 `json:"count"`
+}
+
+type outbound struct {
+	ID         string         `json:"id"`
+	TS         string         `json:"ts"`
+	Reason     string         `json:"reason,omitempty"`
+	Note       string         `json:"note,omitempty"`
+	Items      []outboundItem `json:"items"`
+	RolledBack bool           `json:"rolledBack,omitempty"`
+}
+
+func loadOutbounds() []outbound {
+	var os_ []outbound
+	bizReadJSON(outboundsPath, &os_)
+	return os_
+}
+
+func saveOutbounds(os_ []outbound) error { return bizWriteJSON(outboundsPath, os_) }
+
+func (a *app) handleBizOutbounds() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		os_ := loadOutbounds()
+		if os_ == nil {
+			os_ = []outbound{}
+		}
+		return server.JSON(w, http.StatusOK, os_)
+	}
+}
+
+type outboundBody struct {
+	Reason string         `json:"reason"`
+	Note   string         `json:"note"`
+	Items  []outboundItem `json:"items"`
+}
+
+func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		var body outboundBody
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			return validate.NewRequestError(err, http.StatusBadRequest)
+		}
+		if len(body.Items) == 0 {
+			return validate.NewRequestError(fmt.Errorf("没有出库明细"), http.StatusBadRequest)
+		}
+		key := idemKey(r)
+		if cached, ok := idemLookup(key); ok {
+			return idemServe(w, cached)
+		}
+
+		ctx := services.NewContext(r.Context())
+		ob := &outbound{ID: bizRandID(), TS: bizNow(), Reason: strings.TrimSpace(body.Reason), Note: strings.TrimSpace(body.Note)}
+		var errs []string
+
+		for _, it := range body.Items {
+			eid, err := uuid.Parse(it.EntityID)
+			if err != nil || it.Count <= 0 {
+				errs = append(errs, "明细无效: "+it.EntityID)
+				continue
+			}
+			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+			if err != nil {
+				errs = append(errs, "物品不存在: "+it.EntityID)
+				continue
+			}
+			newQty := full.Quantity - it.Count
+			if newQty < 0 {
+				errs = append(errs, fmt.Sprintf("库存不足(%g)：%s", full.Quantity, full.Name))
+				continue
+			}
+			upd := entityUpdateFromFull(full)
+			upd.Quantity = newQty
+			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+				errs = append(errs, "更新失败: "+full.Name)
+				continue
+			}
+			ob.Items = append(ob.Items, outboundItem{EntityID: it.EntityID, Name: full.Name, Count: it.Count})
+		}
+
+		if len(ob.Items) == 0 {
+			return validate.NewRequestError(fmt.Errorf("没有成功出库的明细：%s", strings.Join(errs, "；")), http.StatusBadRequest)
+		}
+
+		os_ := loadOutbounds()
+		os_ = append([]outbound{*ob}, os_...)
+		if err := saveOutbounds(os_); err != nil {
+			return validate.NewRequestError(err, http.StatusInternalServerError)
+		}
+		eids := make([]string, 0, len(ob.Items))
+		for _, it := range ob.Items {
+			eids = append(eids, it.EntityID)
+		}
+		auditLog("outbound.create", map[string]any{"outboundId": ob.ID, "items": len(ob.Items), "reason": ob.Reason, "entityIds": eids})
+		resp := map[string]any{"outbound": ob, "errors": errs}
+		idemStore(key, resp)
+		return server.JSON(w, http.StatusOK, resp)
+	}
+}
+
+type outboundRollbackBody struct {
+	OutboundID string `json:"outboundId"`
+}
+
+func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		var body outboundRollbackBody
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			return validate.NewRequestError(err, http.StatusBadRequest)
+		}
+		key := idemKey(r)
+		if cached, ok := idemLookup(key); ok {
+			return idemServe(w, cached)
+		}
+
+		os_ := loadOutbounds()
+		idx := -1
+		for i, v := range os_ {
+			if v.ID == body.OutboundID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return validate.NewRequestError(fmt.Errorf("出库单不存在"), http.StatusNotFound)
+		}
+		t := os_[idx]
+		if t.RolledBack {
+			return validate.NewRequestError(fmt.Errorf("该出库单已回滚"), http.StatusConflict)
+		}
+
+		ctx := services.NewContext(r.Context())
+		var errs []string
+		for _, it := range t.Items {
+			eid, err := uuid.Parse(it.EntityID)
+			if err != nil {
+				continue
+			}
+			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+			if err != nil {
+				errs = append(errs, "物品不存在，跳过: "+it.Name)
+				continue
+			}
+			upd := entityUpdateFromFull(full)
+			upd.Quantity = full.Quantity + it.Count
+			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+				errs = append(errs, "更新失败: "+it.Name)
+				continue
+			}
+		}
+		t.RolledBack = true
+		os_[idx] = t
+		if err := saveOutbounds(os_); err != nil {
+			return validate.NewRequestError(err, http.StatusInternalServerError)
+		}
+		eids := make([]string, 0, len(t.Items))
+		for _, it := range t.Items {
+			eids = append(eids, it.EntityID)
+		}
+		auditLog("outbound.rollback", map[string]any{"outboundId": t.ID, "items": len(t.Items), "entityIds": eids})
+		resp := map[string]any{"outbound": t, "errors": errs}
+		idemStore(key, resp)
+		return server.JSON(w, http.StatusOK, resp)
 	}
 }
 

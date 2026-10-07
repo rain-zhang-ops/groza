@@ -73,6 +73,7 @@ def main():
 
         body = page.content()
         check("侧边栏含「进货」", "进货" in body)
+        check("侧边栏含「出货」", "出货" in body)
         check("侧边栏不含「收银」", "收银" not in body)
         loc_links = page.eval_on_selector_all("a[href='/locations']", "els => els.length")
         check("侧栏不含「分类」入口", loc_links == 0, f"links={loc_links}")
