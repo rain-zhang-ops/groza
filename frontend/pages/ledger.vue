@@ -54,6 +54,7 @@
     qty: number;
     loc: string;
     serial: string;
+    extra: Record<string, any>;
     thumb: string | null;
     count: number | null;
     updated: string;
@@ -712,6 +713,7 @@
   const preEdit = reactive<Record<string, { qty: number; purchase: number | null; sell: number | null; safety: number | null }>>({});
 
   const filter = reactive({ brand: "", size: "", spec: "", color: "", material: "", q: "", series: "" });
+  const extraFilters = reactive<Record<string, string>>({});
   const sort = reactive<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
   const cols = reactive({
     size: true, spec: true, color: true, material: true, purchase: true, sell: true,
@@ -754,6 +756,7 @@
       loc: typeof e.parent === "string" ? e.parent : (parent?.name || ""),
       thumb: e.thumb || e.imageId || e.thumbnailId || null,
       serial: String(e.serial ?? e.serialNumber ?? ""),
+      extra: rowExtra(e),
       count: null, updated: e.updatedAt || "",
     } as Row;
   }
@@ -865,7 +868,7 @@
       raw: e, id: e.id, name: e.name,
       brand: "", size: "", spec: "", color: "", material: "", paper: "",
       purchase: null, sell: null, pages: null, safety: null,
-      qty: e.quantity ?? 0, loc: parent?.name || "", serial: String(e.serial ?? e.serialNumber ?? ""), thumb: null, count: null, updated: e.updatedAt || "",
+      qty: e.quantity ?? 0, loc: parent?.name || "", serial: String(e.serial ?? e.serialNumber ?? ""), extra: {}, thumb: null, count: null, updated: e.updatedAt || "",
     } as Row;
   }
   async function hydrateRows(ids: string[], concurrency = 8) {
@@ -1443,6 +1446,7 @@
     (!filter.color || r.color === filter.color) &&
     (!filter.material || r.material === filter.material) &&
     (!filter.series || seriesKey(r) === filter.series) &&
+    Object.entries(extraFilters).every(([nm, v]) => !v || String(r.extra?.[nm] ?? "") === v) &&
     (!filter.q || nq(r.name).includes(nq(filter.q)) || nq(r.brand).includes(nq(filter.q)) || nq(r.size).includes(nq(filter.q)) || nq(r.serial).includes(nq(filter.q)) || nq(String(r.raw.assetId || "")).includes(nq(filter.q))) &&
     (!onlyLow.value || isLow(r)) &&
     dataMatch(r),
@@ -1461,6 +1465,42 @@
     });
   });
   const totalPages = computed(() => Math.max(1, Math.ceil(sorted.value.length / pageSize.value)));
+  const DEDICATED_FIELDS = new Set(["品牌", "尺寸", "规格", "颜色", "材质", "进价", "售价", "安全库存"]);
+  const schemaFields = computed(() => {
+    const seen = new Map<string, string>();
+    for (const r of rows.value) {
+      for (const f of ((r.raw.fields as Array<Record<string, any>>) || [])) {
+        if (!f.name || seen.has(f.name)) continue;
+        seen.set(f.name, f.type || "text");
+      }
+    }
+    return [...seen.entries()].map(([name, type]) => ({ name, type }));
+  });
+  const extraFields = computed(() => schemaFields.value.filter(f => !DEDICATED_FIELDS.has(f.name)));
+  watch(extraFields, (list) => { for (const f of list) if (!(f.name in cols)) cols[f.name] = true; }, { immediate: true });
+  const extraFilterOptions = computed(() => {
+    const res: Array<{ name: string; options: string[] }> = [];
+    for (const f of extraFields.value) {
+      if (f.type !== "text") continue;
+      const set = new Set<string>();
+      for (const r of rows.value) { const v = r.extra?.[f.name]; if (v) set.add(String(v)); }
+      if (set.size && set.size <= 30) res.push({ name: f.name, options: [...set].sort((a, b) => a.localeCompare(b, "zh")) });
+    }
+    return res;
+  });
+  function rowExtra(e: Record<string, any>): Record<string, any> {
+    const o: Record<string, any> = {};
+    for (const f of (e.fields || [])) {
+      o[f.name] = f.type === "text" ? (f.textValue ?? "") : f.type === "boolean" ? !!f.booleanValue : (f.numberValue ?? 0);
+    }
+    return o;
+  }
+  async function setExtra(r: Row, name: string, type: string) {
+    const val = r.extra[name];
+    const payload = type === "boolean" ? !!val : type === "number" ? Number(val) : String(val ?? "");
+    const ok = await putFields(r, { [name]: payload });
+    if (ok) flash("已保存：" + name);
+  }
   const paged = computed(() => {
     const start = (page.value - 1) * pageSize.value;
     return sorted.value.slice(start, start + pageSize.value);
@@ -1872,7 +1912,7 @@
               <div class="absolute right-0 z-40 mt-1 w-44 origin-top-right rounded-lg border bg-popover p-2 text-sm shadow-lg animate-pop">
                 <label v-for="(val, key) in cols" :key="key" class="flex items-center gap-2 rounded px-1 py-1 hover:bg-muted">
                   <input v-model="cols[key]" type="checkbox" class="accent-primary" />
-                  {{ {size:'尺寸',spec:'规格',color:'颜色',material:'材质',purchase:'进价',sell:'售价',safety:'安全库存',updated:'更新时间',shelf:'库位'}[key] }}
+                  {{ {size:'尺寸',spec:'规格',color:'颜色',material:'材质',purchase:'进价',sell:'售价',safety:'安全库存',updated:'更新时间',shelf:'库位'}[key] || key }}
                 </label>
               </div>
             </details>
@@ -1880,6 +1920,13 @@
         </div>
         <Transition name="fold">
           <div v-if="moreFilters" class="mt-3 flex flex-wrap items-end gap-3 border-t pt-3">
+            <template v-for="o in extraFilterOptions" :key="o.name">
+              <label class="flex flex-col gap-1 text-xs text-muted-foreground">{{ o.name }}
+                <select v-model="extraFilters[o.name]" :class="inputCls">
+                  <option value="">全部</option><option v-for="v in o.options" :key="v" :value="v">{{ v }}</option>
+                </select>
+              </label>
+            </template>
             <label class="flex flex-col gap-1 text-xs text-muted-foreground">规格
               <select v-model="filter.spec" :class="inputCls">
                 <option value="">全部</option><option v-for="v in specs" :key="v" :value="v">{{ v }}</option>
@@ -2018,6 +2065,9 @@
                   <span v-if="r.spec" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.spec }}</span>
                   <span v-if="r.color" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.color }}</span>
                   <span v-if="r.material" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.material }}</span>
+                  <template v-for="f in extraFields" :key="'m' + f.name">
+                    <span v-if="r.extra[f.name]" class="rounded-md bg-muted px-1.5 py-0.5">{{ f.name }} {{ f.type === 'boolean' ? '✓' : r.extra[f.name] }}</span>
+                  </template>
                 </div>
                 <div class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
                   <span>进 <b class="font-medium text-foreground">¥{{ fmt(r.purchase) }}</b></span>
@@ -2070,6 +2120,9 @@
               <th v-if="cols.spec" class="border-b px-3 py-2">规格</th>
               <th v-if="cols.color" class="border-b px-3 py-2">颜色</th>
               <th v-if="cols.material" class="border-b px-3 py-2">材质</th>
+              <template v-for="f in extraFields" :key="'h' + f.name">
+                <th v-if="cols[f.name]" class="border-b px-3 py-2 whitespace-nowrap">{{ f.name }}</th>
+              </template>
               <th v-if="cols.purchase" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('purchase')">进价{{ arrow("purchase") }}</th>
               <th v-if="cols.sell" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('sell')">售价{{ arrow("sell") }}</th>
               <th class="cursor-pointer select-none border-b px-3 py-2 text-center transition hover:text-foreground" @click="setSort('qty')">数量{{ arrow("qty") }}</th>
@@ -2107,6 +2160,13 @@
               <td v-if="cols.spec" :class="cellPad"><select :value="r.spec" class="w-24 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '规格', 'spec')"><option value="">-</option><option v-for="v in optsWith(specOptions, r.spec)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
               <td v-if="cols.color" :class="cellPad"><select :value="r.color" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '颜色', 'color')"><option value="">-</option><option v-for="v in optsWith(colorOptions, r.color)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
               <td v-if="cols.material" :class="cellPad"><select :value="r.material" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '材质', 'material')"><option value="">-</option><option v-for="v in optsWith(materialOptions, r.material)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <template v-for="f in extraFields" :key="'c' + f.name">
+                <td v-if="cols[f.name]" :class="cellPad">
+                  <input v-if="f.type === 'text'" v-model="r.extra[f.name]" class="w-24 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="setExtra(r, f.name, f.type)" />
+                  <input v-else-if="f.type === 'number'" v-model.number="r.extra[f.name]" type="number" inputmode="decimal" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @change="setExtra(r, f.name, f.type)" />
+                  <input v-else-if="f.type === 'boolean'" v-model="r.extra[f.name]" type="checkbox" class="accent-primary" @change="setExtra(r, f.name, f.type)" />
+                </td>
+              </template>
               <td v-if="cols.purchase" :class="cellPad">
                 <input v-model.number="r.purchase" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
               </td>
@@ -2217,6 +2277,11 @@
                 <option value="noBrand">无品牌</option>
                 <option value="noSize">无尺寸</option>
                 <option value="noSpec">无规格</option>
+              </select>
+            </label>
+            <label v-for="o in extraFilterOptions" :key="o.name" class="block text-xs text-muted-foreground">{{ o.name }}
+              <select v-model="extraFilters[o.name]" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+                <option value="">全部</option><option v-for="v in o.options" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="flex items-center gap-2 text-base"><input v-model="countMode" type="checkbox" class="h-5 w-5 accent-primary" /> 盘点模式</label>
