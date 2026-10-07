@@ -12,18 +12,18 @@ for f in rebuild.sh ops/*.sh; do
 done
 
 echo "== python 语法 =="
-if python3 -m py_compile patches/patch_upstream.py tests/smoke.py; then echo "  ok"; else fail=1; fi
+if python3 -m py_compile patches/patch_upstream.py tests/smoke.py tests/e2e.py; then echo "  ok"; else fail=1; fi
 
 echo "== gofmt =="
-bad="$(gofmt -l ./*.go 2>/dev/null || true)"
+bad="$(gofmt -l ./backend/*.go 2>/dev/null || true)"
 if [ -n "$bad" ]; then echo "  需格式化: $bad"; fail=1; else echo "  ok"; fi
-for f in ./*.go; do gofmt -e "$f" >/dev/null 2>/dev/null || { echo "  语法错误: $f"; fail=1; }; done
+for f in ./backend/*.go; do gofmt -e "$f" >/dev/null 2>/dev/null || { echo "  语法错误: $f"; fail=1; }; done
 
-echo "== node --check =="
-if node --check lib/offline-queue.js; then echo "  ok"; else fail=1; fi
+echo "== 离线队列 =="
+if grep -q "export function useOfflineQueue" frontend/composables/useOfflineQueue.ts; then echo "  ok"; else echo "  ERR useOfflineQueue"; fail=1; fi
 
 echo "== 定制文件齐全 =="
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go qr.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py tests/smoke.py tests/e2e.py; do
+for f in frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/collection/ui-options.vue frontend/composables/useOfflineQueue.ts backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go patches/patch_upstream.py tests/smoke.py tests/e2e.py; do
   [ -f "$f" ] && echo "  ok  $f" || { echo "  缺失 $f"; fail=1; }
 done
 

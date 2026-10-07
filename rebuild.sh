@@ -41,7 +41,8 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go qr.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py; do
+CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/collection/ui-options.vue frontend/composables/useOfflineQueue.ts patches/patch_upstream.py"
+for f in $CUSTOM_FILES; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
 
@@ -56,7 +57,7 @@ mkdir -p "$HOME_DIR/backups"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BK="$HOME_DIR/backups/custom-$STAMP"
 mkdir -p "$BK"
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go qr.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py rebuild.sh; do
+for f in $CUSTOM_FILES rebuild.sh; do
   cp -a "$HOME_DIR/$f" "$BK/$(basename $f)" 2>/dev/null || true
 done
 log "备份完成: $BK"
@@ -119,21 +120,21 @@ fi
 
 # ---------------- 注入定制文件 ----------------
 log "注入定制文件"
-cp "$HOME_DIR/ledger_api.go"   "$WORK/backend/app/api/ledger.go"
-cp "$HOME_DIR/audit.go"        "$WORK/backend/app/api/audit.go"
-cp "$HOME_DIR/idempotency.go" "$WORK/backend/app/api/idempotency.go"
-cp "$HOME_DIR/metrics.go"     "$WORK/backend/app/api/metrics.go"
-cp "$HOME_DIR/qr.go"          "$WORK/backend/app/api/qr.go"
-cp "$HOME_DIR/biz.go"          "$WORK/backend/app/api/biz.go"
-cp "$HOME_DIR/ai_recognize.go" "$WORK/backend/app/api/ai_recognize.go"
-cp "$HOME_DIR/ui_options.go"   "$WORK/backend/app/api/ui_options.go"
-cp "$HOME_DIR/trash.go"        "$WORK/backend/app/api/trash.go"
-cp "$HOME_DIR/ledger.vue"      "$FE_DIR/pages/ledger.vue"
-cp "$HOME_DIR/intake.vue"      "$FE_DIR/pages/intake.vue"
+cp "$HOME_DIR/backend/ledger_api.go"   "$WORK/backend/app/api/ledger.go"
+cp "$HOME_DIR/backend/audit.go"        "$WORK/backend/app/api/audit.go"
+cp "$HOME_DIR/backend/idempotency.go"  "$WORK/backend/app/api/idempotency.go"
+cp "$HOME_DIR/backend/metrics.go"      "$WORK/backend/app/api/metrics.go"
+cp "$HOME_DIR/backend/qr.go"           "$WORK/backend/app/api/qr.go"
+cp "$HOME_DIR/backend/biz.go"          "$WORK/backend/app/api/biz.go"
+cp "$HOME_DIR/backend/ai_recognize.go" "$WORK/backend/app/api/ai_recognize.go"
+cp "$HOME_DIR/backend/ui_options.go"   "$WORK/backend/app/api/ui_options.go"
+cp "$HOME_DIR/backend/trash.go"        "$WORK/backend/app/api/trash.go"
+cp "$HOME_DIR/frontend/pages/ledger.vue" "$FE_DIR/pages/ledger.vue"
+cp "$HOME_DIR/frontend/pages/intake.vue" "$FE_DIR/pages/intake.vue"
 mkdir -p "$FE_DIR/composables"
-cp "$HOME_DIR/lib/offline-queue.js" "$FE_DIR/composables/useOfflineQueue.ts"
+cp "$HOME_DIR/frontend/composables/useOfflineQueue.ts" "$FE_DIR/composables/useOfflineQueue.ts"
 mkdir -p "$FE_DIR/pages/collection/index"
-cp "$HOME_DIR/ui-options.vue"  "$FE_DIR/pages/collection/index/ui-options.vue"
+cp "$HOME_DIR/frontend/pages/collection/ui-options.vue" "$FE_DIR/pages/collection/index/ui-options.vue"
 
 # ---------------- 统一补丁（锚点失配即中止）----------------
 log "应用统一补丁 patches/patch_upstream.py"
