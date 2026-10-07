@@ -440,3 +440,9 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 
 ### 移动端底部 Dock（3）
 `lg` 以下显示底部固定导航：待办 / 物品 / 进出 / 配置 / 我的（抽屉仍保留）；内容区加底部避让。
+
+### 交互/跳转规范统一（4）
+- 标题统一：待办 / 单据 / 入库 / 出库 / 入库记录 / 出库记录（原“进货/出货”全部改为“入库/出库”）。
+- 头部统一：`flex-wrap` + 标题 + 计数徽章 + 右侧操作区；次要入口用 border 按钮，主动作用 primary 按钮。
+- 互跳集合统一：进出/记录/单据页均含「入库 · 出库 · 单据 · 台账」（记录页前置主动作「去入库/去出库」）。
+- 空/加载/错误态统一：`h-16 animate-pulse` 骨架、`rounded-xl border border-destructive/40 …` 错误、`py-10 text-center text-sm text-muted-foreground` 空态。

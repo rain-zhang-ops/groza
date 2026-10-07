@@ -98,15 +98,17 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-3 md:p-6" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-3 flex items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">待办中心</h1>
+      <header class="mb-3 flex flex-wrap items-center gap-2">
+        <h1 class="text-lg font-semibold tracking-tight md:text-xl">待办</h1>
         <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">共 {{ total }} 项</span>
-        <button class="ml-auto inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted active:scale-95" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
-        <NuxtLink to="/ledger" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">台账</NuxtLink>
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+          <button class="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted active:scale-95" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
+          <NuxtLink to="/ledger" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">台账</NuxtLink>
+        </div>
       </header>
 
       <div v-if="loading" class="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <div v-for="i in 6" :key="i" class="h-24 animate-pulse rounded-xl border bg-muted/40"></div>
+        <div v-for="i in 6" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
       </div>
       <div v-else-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
       <template v-else>
@@ -131,7 +133,7 @@
             <span class="text-xs text-muted-foreground">低库存 {{ lowStock.length }} 款</span>
             <div class="ml-auto flex items-center gap-2">
               <button class="rounded-lg border bg-background px-2.5 py-1.5 text-xs transition hover:bg-muted active:scale-95" @click="copyRestock">复制清单</button>
-              <NuxtLink to="/intake" class="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90">去进货</NuxtLink>
+              <NuxtLink to="/intake" class="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground transition hover:bg-primary/90">去入库</NuxtLink>
             </div>
           </div>
           <div v-if="!lowStock.length" class="py-4 text-center text-sm text-muted-foreground">暂无低库存</div>

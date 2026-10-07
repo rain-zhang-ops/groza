@@ -103,13 +103,16 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-3 md:p-6" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-3 flex items-center gap-2">
+      <header class="mb-3 flex flex-wrap items-center gap-2">
         <h1 class="text-lg font-semibold tracking-tight md:text-xl">出库记录</h1>
         <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">{{ matched.length }} 单</span>
-        <div class="ml-auto flex items-center gap-2">
+        <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/outbound" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">去出库</NuxtLink>
+          <NuxtLink to="/intake" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库</NuxtLink>
+          <NuxtLink to="/documents" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">单据</NuxtLink>
           <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
         </div>
+
       </header>
 
       <!-- 筛选 -->

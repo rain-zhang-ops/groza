@@ -7,7 +7,7 @@
   });
 
   useHead({
-    title: "Groza | 进货入库",
+    title: "Groza | 入库",
   });
 
   type Row = {
@@ -190,13 +190,16 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-3 md:p-6" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-4 flex items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">进货入库</h1>
+      <header class="mb-3 flex flex-wrap items-center gap-2">
+        <h1 class="text-lg font-semibold tracking-tight md:text-xl">入库</h1>
         <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
-        <div class="ml-auto flex items-center gap-2">
-          <NuxtLink to="/intake-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">进货记录</NuxtLink>
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+          <NuxtLink to="/intake-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库记录</NuxtLink>
+          <NuxtLink to="/outbound" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库</NuxtLink>
+          <NuxtLink to="/documents" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">单据</NuxtLink>
           <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
         </div>
+
       </header>
 
       <!-- 入库单表单 -->

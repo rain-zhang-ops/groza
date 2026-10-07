@@ -7,7 +7,7 @@
   });
 
   useHead({
-    title: "Groza | 进货记录",
+    title: "Groza | 入库记录",
   });
 
   type IntakeItem = { entityId: string; name?: string; count: number; cost?: number; sell?: number };
@@ -92,12 +92,12 @@
     const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `进货记录-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `入库记录-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click(); URL.revokeObjectURL(a.href);
     flash(`已导出 ${matched.value.length} 单`);
   }
   function copyText() {
-    const lines = [`Groza 进货记录 · ${new Date().toLocaleDateString()} · ${matched.value.length} 单`];
+    const lines = [`Groza 入库记录 · ${new Date().toLocaleDateString()} · ${matched.value.length} 单`];
     for (const t of matched.value) lines.push(`· ${t.ts.slice(0, 16).replace("T", " ")}  ${t.supplier || ""}  ${(t.items || []).map(it => it.name + "×" + it.count).join("、")}  ¥${fmt(t.totalCost)}`);
     const txt = lines.join("\n");
     navigator.clipboard?.writeText(txt).then(() => flash("已复制到剪贴板")).catch(() => window.prompt("复制：", txt));
@@ -109,13 +109,16 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-3 md:p-6" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-3 flex items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">进货记录</h1>
+      <header class="mb-3 flex flex-wrap items-center gap-2">
+        <h1 class="text-lg font-semibold tracking-tight md:text-xl">入库记录</h1>
         <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">{{ matched.length }} 单</span>
-        <div class="ml-auto flex items-center gap-2">
-          <NuxtLink to="/intake" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">去进货</NuxtLink>
+        <div class="ml-auto flex flex-wrap items-center gap-2">
+          <NuxtLink to="/intake" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">去入库</NuxtLink>
+          <NuxtLink to="/outbound" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库</NuxtLink>
+          <NuxtLink to="/documents" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">单据</NuxtLink>
           <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
         </div>
+
       </header>
 
       <section class="mb-3 rounded-xl border bg-card p-2 shadow-sm">
