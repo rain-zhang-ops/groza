@@ -31,6 +31,89 @@ def rep(path, old, new, name, done_msg=None):
     open(path, "w", encoding="utf-8").write(s.replace(old, new, 1))
     done(name if not done_msg else f"{name} -> {done_msg}")
 
+
+def patch_colors(fe):
+    p = f"{fe}/assets/css/main.css"
+    try:
+        s = open(p, encoding="utf-8").read()
+    except OSError:
+        fail("theme-colors", "无法读取 main.css")
+        return
+    key = ":root,.homebox {"
+    i = s.find(key)
+    if i < 0:
+        fail("theme-colors", "未找到 :root,.homebox")
+        return
+    j = s.find("--radius: 0.5rem;", i)
+    if j < 0:
+        fail("theme-colors", "未找到 radius 锚点")
+        return
+    end = j + len("--radius: 0.5rem;")
+    if "222 47% 45%" in s[i:end]:
+        skip("theme-colors")
+        return
+    new = """:root,.homebox {
+    --background: 0 0% 100%;
+    --background-accent: 220 20% 90%;
+    --foreground: 222 30% 14%;
+    --primary: 222 47% 45%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 222 26% 20%;
+    --secondary-foreground: 210 30% 92%;
+    --accent: 222 45% 95%;
+    --accent-foreground: 222 40% 25%;
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 42%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 30% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 30% 14%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --input: 220 13% 86%;
+    --border: 220 13% 88%;
+    --ring: 222 47% 45%;
+    --sidebar-background: 220 20% 96%;
+    --sidebar-foreground: 222 30% 14%;
+    --sidebar-primary: 222 47% 45%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 220 20% 90%;
+    --sidebar-accent-foreground: 222 30% 14%;
+    --sidebar-border: 220 13% 88%;
+    --sidebar-ring: 222 47% 45%;
+    --radius: 0.6rem;"""
+    open(p, "w", encoding="utf-8").write(s[:i] + new + s[end:])
+    done("theme-colors Groza 配色（靛蓝/石板风暴风）")
+
+
+def rebrand_locale(fe):
+    p = f"{fe}/locales/zh-CN.json"
+    try:
+        d = json.load(open(p, encoding="utf-8"))
+    except OSError:
+        return
+    changed = [0]
+
+    def walk(x):
+        if isinstance(x, str):
+            y = x.replace("HomeBox", "Groza").replace("Homebox", "Groza")
+            if y != x:
+                changed[0] += 1
+            return y
+        if isinstance(x, dict):
+            return {k: walk(v) for k, v in x.items()}
+        if isinstance(x, list):
+            return [walk(v) for v in x]
+        return x
+
+    d = walk(d)
+    if changed[0]:
+        json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        done(f"rebrand zh-CN（{changed[0]} 处 HomeBox→Groza）")
+    else:
+        skip("rebrand zh-CN")
+
+
 def main():
     fe, be = sys.argv[1], sys.argv[2]
 
@@ -57,6 +140,22 @@ def main():
     m.update(rename)
     json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     done("menu-zh 菜单统一中文")
+
+    # ---- 2c. 品牌与配色：Groza ----
+    rep(f"{fe}/nuxt.config.ts",
+        'name: "Homebox",\n      short_name: "Homebox",',
+        'name: "Groza",\n      short_name: "Groza",',
+        "pwa-name-groza")
+    rep(f"{fe}/layouts/default.vue",
+        '<AppHeaderText class="h-6" />',
+        '<span class="text-xl font-bold tracking-tight text-secondary-foreground">Groza</span>',
+        "brand-header-groza")
+    rep(f"{fe}/pages/index.vue",
+        'title: "HomeBox | " + t("index.title"),',
+        'title: "Groza | " + t("index.title"),',
+        "brand-login-title")
+    patch_colors(fe)
+    rebrand_locale(fe)
 
     # ---- 2b. PWA Service Worker 策略 ----
     #   /api        -> NetworkOnly（保证库存/流水实时，不被缓存落后）

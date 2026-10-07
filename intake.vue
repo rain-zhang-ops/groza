@@ -6,7 +6,7 @@
   });
 
   useHead({
-    title: "HomeBox | 进货入库",
+    title: "Groza | 进货入库",
   });
 
   type Row = {

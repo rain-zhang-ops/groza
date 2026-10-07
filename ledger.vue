@@ -28,7 +28,7 @@
   });
 
   useHead({
-    title: "HomeBox | 台账查询",
+    title: "Groza | 台账查询",
   });
 
   type Row = {
@@ -630,6 +630,8 @@
   const filterOpen = ref(false);
   const moreFilters = ref(false);
   const density = ref<"comfortable" | "compact">("comfortable");
+  const page = ref(1);
+  const pageSize = ref(50);
 
   const sel = reactive<Record<string, boolean>>({});
   const trashed = reactive<Record<string, boolean>>({});
@@ -782,6 +784,7 @@
     }, 200);
   }
   watch([filter, sort, onlyLow, countMode, dataFilter], syncView, { deep: true });
+  watch([filter, sort, onlyLow, countMode, dataFilter, pageSize], () => { page.value = 1; }, { deep: true });
   watch(cols, () => localStorage.setItem("hb.ledger.cols", JSON.stringify(cols)), { deep: true });
 
   // ---------- PWA 安装 / 通知 ----------
@@ -1193,6 +1196,16 @@
       return va < vb ? -1 * dir : va > vb ? 1 * dir : 0;
     });
   });
+  const totalPages = computed(() => Math.max(1, Math.ceil(sorted.value.length / pageSize.value)));
+  const paged = computed(() => {
+    const start = (page.value - 1) * pageSize.value;
+    return sorted.value.slice(start, start + pageSize.value);
+  });
+  function gotoPage(p: number) {
+    page.value = Math.min(Math.max(1, p), totalPages.value);
+    if (import.meta.client) window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  watch(totalPages, (tp) => { if (page.value > tp) page.value = tp; });
   const totals = computed(() => {
     let qty = 0, cost = 0, retail = 0, low = 0, sold = 0;
     for (const r of filtered.value) {
@@ -1285,8 +1298,8 @@
   const selectedRows = computed(() => rows.value.filter(r => sel[r.id]));
   const selectedCount = computed(() => selectedRows.value.length);
   function toggleAll() {
-    const all = sorted.value.every(r => sel[r.id]);
-    for (const r of sorted.value) sel[r.id] = !all;
+    const all = paged.value.length > 0 && paged.value.every(r => sel[r.id]);
+    for (const r of paged.value) sel[r.id] = !all;
   }
   function clearSel() { for (const k of Object.keys(sel)) sel[k] = false; }
   async function batchQty() {
@@ -1688,7 +1701,7 @@
 
       <!-- 手机卡片 -->
       <TransitionGroup v-else-if="isMobile" name="card" tag="div" class="space-y-2.5">
-        <div v-for="r in sorted" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card shadow-sm">
+        <div v-for="r in paged" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card shadow-sm">
           <div v-show="(swipe[r.id] || 0) < 0" class="absolute inset-y-0 right-0 flex items-center gap-2 bg-primary/5 px-2.5">
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,-1); closeSwipe(r)"><MdiMinus class="h-5 w-5" /></button>
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,1); closeSwipe(r)"><MdiPlus class="h-5 w-5" /></button>
@@ -1777,7 +1790,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in sorted" :key="r.id" class="border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
+            <tr v-for="r in paged" :key="r.id" class="border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
               <td :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
@@ -1838,6 +1851,21 @@
           <MdiPackageVariantClosed class="mx-auto mb-2 h-8 w-8 opacity-40" />
           没有匹配的物品
         </div>
+      </div>
+
+      <!-- 分页 -->
+      <div v-if="sorted.length" class="mt-4 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm">
+        <select v-model.number="pageSize" class="rounded-lg border bg-background px-2 py-1.5 text-sm" @change="gotoPage(1)">
+          <option :value="20">20/页</option>
+          <option :value="50">50/页</option>
+          <option :value="100">100/页</option>
+          <option :value="100000">全部</option>
+        </select>
+        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page <= 1" @click="gotoPage(1)">首页</button>
+        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page <= 1" @click="gotoPage(page - 1)">上一页</button>
+        <span class="px-2 tabular-nums text-muted-foreground">{{ page }} / {{ totalPages }} · 共 {{ sorted.length }} 条</span>
+        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page >= totalPages" @click="gotoPage(page + 1)">下一页</button>
+        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page >= totalPages" @click="gotoPage(totalPages)">末页</button>
       </div>
     </div>
 
