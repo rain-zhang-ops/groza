@@ -77,6 +77,10 @@
   const addForm = reactive({ name: "", size: "", color: "", spec: "", material: "塑料", qty: 0 as number, purchase: null as number | null, sell: null as number | null, loc: "", autoSplit: true, keep: false });
   const addNew = reactive({ size: false, color: false, spec: false, material: false });
   const uiOptions = ref<{ sizes: string[]; specs: string[]; colors: string[]; materials: string[]; required: string[] }>({ sizes: [], specs: [], colors: [], materials: [], required: [] });
+  const mediaSlots = ref<Array<{ key: string; name: string; required?: boolean; multiple?: boolean }>>([
+    { key: "front", name: "正面", required: true }, { key: "back", name: "反面" },
+    { key: "detail", name: "细节", multiple: true }, { key: "package", name: "包装" },
+  ]);
   function optionsFor(key: "size" | "color" | "spec" | "material", preset: string[]): string[] {
     const cfgMap: Record<string, string[]> = { size: uiOptions.value.sizes, color: uiOptions.value.colors, spec: uiOptions.value.specs, material: uiOptions.value.materials };
     const set = new Set([...(cfgMap[key] || []), ...preset]);
@@ -828,6 +832,8 @@
   async function applyGxConfig(): Promise<void> {
     try {
       const cfg = await $fetch<Record<string, any>>("/api/v1/gx/config");
+      const slots = cfg?.media?.slots;
+      if (Array.isArray(slots) && slots.length) mediaSlots.value = slots;
       const attrs: Array<Record<string, any>> = Array.isArray(cfg?.attributes) ? cfg.attributes : [];
       if (!attrs.length) return;
       const opts = (n: string): string[] => (attrs.find(a => a.name === n)?.options) || [];
@@ -1349,8 +1355,20 @@
   const galleryInput = ref<HTMLInputElement | null>(null);
   function pickGallery() { galleryInput.value?.click(); }
   function attUrl(aid: string) { return `/api/v1/entities/${galleryId.value}/attachments/${aid}`; }
+  const gallerySlot = ref("detail");
+  function slotName(key: string): string { return mediaSlots.value.find(s => s.key === key)?.name || key || "未分类"; }
+  function slotKeyOf(a: Record<string, any>): string { const t = String(a.title || ""); return mediaSlots.value.some(s => s.key === t) ? t : ""; }
+  async function setSlot(a: Record<string, any>, key: string) {
+    galleryBusy.value = true;
+    try {
+      await $fetch(`/api/v1/entities/${galleryId.value}/attachments/${a.id}`, { method: "PUT", body: { type: a.type || "photo", title: key, primary: !!a.primary } });
+      galleryImgs.value = galleryImgs.value.map(x => x.id === a.id ? { ...x, title: key } : x);
+    } catch (e) { flash("设置槽位失败：" + ((e as Error)?.message ?? String(e))); }
+    galleryBusy.value = false;
+  }
   async function showGallery(r: Row) {
     galleryId.value = r.id; galleryTitle.value = r.name; galleryOpen.value = true; galleryBusy.value = true; galleryImgs.value = [];
+    gallerySlot.value = mediaSlots.value.find(s => s.multiple)?.key || mediaSlots.value[0]?.key || "detail";
     try {
       const d = await $fetch<Record<string, any>>(`/api/v1/entities/${r.id}`);
       galleryImgs.value = (d.attachments || []).filter((a: any) => String(a.mimeType || "").startsWith("image/"));
@@ -1364,8 +1382,10 @@
     if (!files.length) return;
     galleryBusy.value = true;
     let first = galleryImgs.value.length === 0;
+    const slot = gallerySlot.value || "detail";
     for (const f of files) {
       try {
+        const before = new Set(galleryImgs.value.map((x: any) => String(x.id)));
         const blob = await compressImage(f);
         const form = new FormData();
         form.append("file", blob, "photo.jpg");
@@ -1375,6 +1395,8 @@
         first = false;
         const d = await $fetch<Record<string, any>>(`/api/v1/entities/${galleryId.value}/attachments`, { method: "POST", body: form });
         galleryImgs.value = (d.attachments || []).filter((a: any) => String(a.mimeType || "").startsWith("image/"));
+        const fresh = galleryImgs.value.find((a: any) => !before.has(String(a.id)));
+        if (fresh) await setSlot(fresh, slot);
       } catch (err) { flash("上传失败：" + ((err as Error)?.message ?? String(err))); }
     }
     galleryBusy.value = false;
@@ -2614,16 +2636,26 @@
             <button class="rounded-lg p-1 hover:bg-muted" @click="closeGallery"><MdiClose class="h-5 w-5" /></button>
           </div>
           <div v-if="galleryBusy" class="py-6 text-center text-sm text-muted-foreground">处理中…</div>
+          <div class="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+            上传到槽位
+            <select v-model="gallerySlot" :class="inputCls">
+              <option v-for="s in mediaSlots" :key="s.key" :value="s.key">{{ s.name }}</option>
+            </select>
+          </div>
           <div class="grid grid-cols-3 gap-2">
             <div v-for="a in galleryImgs" :key="a.id" class="relative overflow-hidden rounded-lg border">
               <img :src="attUrl(a.id)" class="h-28 w-full object-cover" alt="" />
               <button v-if="!a.primary" class="absolute left-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white" @click="setPrimaryImg(a)">设封面</button>
               <span v-else class="absolute left-1 top-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[11px] text-white">封面</span>
               <button class="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white" @click="delGalleryImg(a)"><MdiDeleteForever class="h-3.5 w-3.5" /></button>
+              <select :value="slotKeyOf(a)" class="absolute inset-x-1 bottom-1 rounded-md border-0 bg-black/70 px-1 py-0.5 text-[11px] text-white outline-none" @change="setSlot(a, ($event.target as HTMLSelectElement).value)">
+                <option value="">未分类</option>
+                <option v-for="s in mediaSlots" :key="s.key" :value="s.key">{{ s.name }}</option>
+              </select>
             </div>
             <button class="grid h-28 place-items-center rounded-lg border border-dashed text-3xl text-muted-foreground transition hover:bg-muted" @click="pickGallery">＋</button>
           </div>
-          <p class="mt-2 text-xs text-muted-foreground">可传多张；第一张默认封面，点“设封面”可更换。</p>
+          <p class="mt-2 text-xs text-muted-foreground">按槽位归档（{{ mediaSlots.map(s => s.name).join(" / ") }}）；第一张默认封面，可更换。</p>
         </div>
       </div>
     </Transition>
