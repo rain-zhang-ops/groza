@@ -50,6 +50,7 @@ type ledgerUIOptions struct {
 	Specs     []string `json:"specs"`
 	Colors    []string `json:"colors"`
 	Materials []string `json:"materials"`
+	Required  []string `json:"required"`
 }
 
 type ledgerOut struct {

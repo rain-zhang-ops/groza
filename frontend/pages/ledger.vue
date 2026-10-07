@@ -76,7 +76,7 @@
   const addSaving = ref(false);
   const addForm = reactive({ name: "", size: "", color: "", spec: "", material: "塑料", qty: 0 as number, purchase: null as number | null, sell: null as number | null, loc: "", autoSplit: true, keep: false });
   const addNew = reactive({ size: false, color: false, spec: false, material: false });
-  const uiOptions = ref<{ sizes: string[]; specs: string[]; colors: string[]; materials: string[] }>({ sizes: [], specs: [], colors: [], materials: [] });
+  const uiOptions = ref<{ sizes: string[]; specs: string[]; colors: string[]; materials: string[]; required: string[] }>({ sizes: [], specs: [], colors: [], materials: [], required: [] });
   function optionsFor(key: "size" | "color" | "spec" | "material", preset: string[]): string[] {
     const cfgMap: Record<string, string[]> = { size: uiOptions.value.sizes, color: uiOptions.value.colors, spec: uiOptions.value.specs, material: uiOptions.value.materials };
     const set = new Set([...(cfgMap[key] || []), ...preset]);
@@ -277,6 +277,7 @@
       noSpec: list.filter(r => !r.spec).length,
       dupCount: dupNames.reduce((a, k) => a + (dup[k] || 0), 0),
       dupNames,
+      noRequired: (uiOptions.value.required || []).length ? list.filter(r => missingRequired(r).length > 0).length : 0,
     };
   });
   function applyQuality(kind: string) {
@@ -807,7 +808,7 @@
     locations.value = (agg.locations || []).map((x: Record<string, any>) => ({ id: x.id, name: x.name }));
     uiOptions.value = {
       sizes: agg.uiOptions?.sizes || [], specs: agg.uiOptions?.specs || [],
-      colors: agg.uiOptions?.colors || [], materials: agg.uiOptions?.materials || [],
+      colors: agg.uiOptions?.colors || [], materials: agg.uiOptions?.materials || [], required: agg.uiOptions?.required || [],
     };
     for (const k of Object.keys(trashEntries)) delete trashEntries[k];
     const ent = agg.trash?.entries || {};
@@ -852,7 +853,7 @@
       for (const k of Object.keys(trashed)) delete trashed[k];
       for (const id of (trashData.ids || [])) trashed[id] = true;
       locations.value = (tree || []).map(n => ({ id: n.id, name: n.name }));
-      uiOptions.value = { sizes: opts.sizes || [], specs: opts.specs || [], colors: opts.colors || [], materials: opts.materials || [] };
+      uiOptions.value = { sizes: opts.sizes || [], specs: opts.specs || [], colors: opts.colors || [], materials: opts.materials || [], required: (opts as any).required || [] };
       const items = list.items || [];
       rows.value = items.map(summaryToRow);
       loading.value = false;
@@ -1185,6 +1186,8 @@
   }
   async function saveFields() {
     const r = fieldsItem.value; if (!r) return;
+    const miss = fieldsDraft.value.filter(f => requiredSet.value.has(f.name) && (f.value === "" || f.value === null || f.value === undefined)).map(f => f.name);
+    if (miss.length && !window.confirm(`必填字段未填：${miss.join("、")}。仍要保存？`)) return;
     const changes: Record<string, any> = {};
     for (const f of fieldsDraft.value) changes[f.name] = f.value;
     fieldsBusy.value = true;
@@ -1436,6 +1439,7 @@
       case "noBrand": return !r.brand;
       case "noSize": return !r.size;
       case "noSpec": return !r.spec;
+      case "required": return missingRequired(r).length > 0;
       default: return true;
     }
   }
@@ -1476,7 +1480,38 @@
     }
     return [...seen.entries()].map(([name, type]) => ({ name, type }));
   });
-  const extraFields = computed(() => schemaFields.value.filter(f => !DEDICATED_FIELDS.has(f.name)));
+  const extraFields = computed(() => {
+    const list = schemaFields.value.filter(f => !DEDICATED_FIELDS.has(f.name));
+    const ord = fieldOrder.value;
+    if (!ord.length) return list;
+    return [...list].sort((a, b) => {
+      const ia = ord.indexOf(a.name), ib = ord.indexOf(b.name);
+      if (ia < 0 && ib < 0) return 0;
+      if (ia < 0) return 1;
+      if (ib < 0) return -1;
+      return ia - ib;
+    });
+  });
+  const fieldOrder = ref<string[]>([]);
+  try { fieldOrder.value = JSON.parse(localStorage.getItem("hb.ledger.fieldOrder") || "[]"); } catch (_e) { fieldOrder.value = []; }
+  function moveField(name: string, dir: number) {
+    const ord = [...fieldOrder.value];
+    if (!ord.includes(name)) ord.push(name);
+    const i = ord.indexOf(name), j = i + dir;
+    if (j < 0 || j >= ord.length) return;
+    [ord[i], ord[j]] = [ord[j], ord[i]];
+    fieldOrder.value = ord;
+    try { localStorage.setItem("hb.ledger.fieldOrder", JSON.stringify(ord)); } catch (_e) { /* ignore */ }
+  }
+  const requiredSet = computed(() => new Set(uiOptions.value.required || []));
+  function missingRequired(r: Row): string[] {
+    const miss: string[] = [];
+    for (const name of (uiOptions.value.required || [])) {
+      const v = r.extra?.[name];
+      if (v === "" || v === null || v === undefined) miss.push(name);
+    }
+    return miss;
+  }
   watch(extraFields, (list) => { for (const f of list) if (!(f.name in cols)) cols[f.name] = true; }, { immediate: true });
   const extraFilterOptions = computed(() => {
     const res: Array<{ name: string; options: string[] }> = [];
@@ -1913,6 +1948,10 @@
                 <label v-for="(val, key) in cols" :key="key" class="flex items-center gap-2 rounded px-1 py-1 hover:bg-muted">
                   <input v-model="cols[key]" type="checkbox" class="accent-primary" />
                   {{ {size:'尺寸',spec:'规格',color:'颜色',material:'材质',purchase:'进价',sell:'售价',safety:'安全库存',updated:'更新时间',shelf:'库位'}[key] || key }}
+                  <template v-if="extraFields.some(f => f.name === key)">
+                    <button type="button" class="ml-auto px-1 text-muted-foreground transition hover:text-foreground" title="上移" @click.stop.prevent="moveField(key, -1)">↑</button>
+                    <button type="button" class="px-1 text-muted-foreground transition hover:text-foreground" title="下移" @click.stop.prevent="moveField(key, 1)">↓</button>
+                  </template>
                 </label>
               </div>
             </details>
@@ -2112,21 +2151,21 @@
             <tr class="text-left text-xs text-muted-foreground">
               <th class="border-b px-2 py-2"><input type="checkbox" class="accent-primary" :checked="sorted.length>0 && sorted.every(r=>sel[r.id])" @change="toggleAll" /></th>
               <th class="border-b px-2 py-2">图</th>
-              <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('name')">名称{{ arrow("name") }}</th>
+              <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('name')">名称<span v-if="requiredSet.has('名称')" class="text-destructive"> *</span>{{ arrow("name") }}</th>
               <th v-if="cols.updated" class="cursor-pointer select-none border-b px-3 py-2 whitespace-nowrap transition hover:text-foreground" @click="setSort('updated')">更新{{ arrow("updated") }}</th>
               <th v-if="cols.shelf" class="border-b px-3 py-2">库位</th>
-              <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('brand')">品牌{{ arrow("brand") }}</th>
-              <th v-if="cols.size" class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('size')">尺寸{{ arrow("size") }}</th>
-              <th v-if="cols.spec" class="border-b px-3 py-2">规格</th>
-              <th v-if="cols.color" class="border-b px-3 py-2">颜色</th>
-              <th v-if="cols.material" class="border-b px-3 py-2">材质</th>
+              <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('brand')">品牌<span v-if="requiredSet.has('品牌')" class="text-destructive"> *</span>{{ arrow("brand") }}</th>
+              <th v-if="cols.size" class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('size')">尺寸<span v-if="requiredSet.has('尺寸')" class="text-destructive"> *</span>{{ arrow("size") }}</th>
+              <th v-if="cols.spec" class="border-b px-3 py-2">规格<span v-if="requiredSet.has('规格')" class="text-destructive"> *</span></th>
+              <th v-if="cols.color" class="border-b px-3 py-2">颜色<span v-if="requiredSet.has('颜色')" class="text-destructive"> *</span></th>
+              <th v-if="cols.material" class="border-b px-3 py-2">材质<span v-if="requiredSet.has('材质')" class="text-destructive"> *</span></th>
               <template v-for="f in extraFields" :key="'h' + f.name">
-                <th v-if="cols[f.name]" class="border-b px-3 py-2 whitespace-nowrap">{{ f.name }}</th>
+                <th v-if="cols[f.name]" class="border-b px-3 py-2 whitespace-nowrap">{{ f.name }}<span v-if="requiredSet.has(f.name)" class="text-destructive"> *</span></th>
               </template>
-              <th v-if="cols.purchase" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('purchase')">进价{{ arrow("purchase") }}</th>
-              <th v-if="cols.sell" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('sell')">售价{{ arrow("sell") }}</th>
+              <th v-if="cols.purchase" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('purchase')">进价<span v-if="requiredSet.has('进价')" class="text-destructive"> *</span>{{ arrow("purchase") }}</th>
+              <th v-if="cols.sell" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('sell')">售价<span v-if="requiredSet.has('售价')" class="text-destructive"> *</span>{{ arrow("sell") }}</th>
               <th class="cursor-pointer select-none border-b px-3 py-2 text-center transition hover:text-foreground" @click="setSort('qty')">数量{{ arrow("qty") }}</th>
-              <th v-if="cols.safety" class="cursor-pointer select-none border-b px-3 py-2 text-center transition hover:text-foreground" @click="setSort('safety')">安全库存{{ arrow("safety") }}</th>
+              <th v-if="cols.safety" class="cursor-pointer select-none border-b px-3 py-2 text-center transition hover:text-foreground" @click="setSort('safety')">安全库存<span v-if="requiredSet.has('安全库存')" class="text-destructive"> *</span>{{ arrow("safety") }}</th>
               <th v-if="countMode" class="border-b px-3 py-2 text-center">实盘</th>
               <th v-if="countMode" class="border-b px-3 py-2 text-center">差异</th>
               <th class="border-b px-2 py-2 text-center">操作</th>
@@ -2403,6 +2442,7 @@
             <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noBrand')"><span>缺品牌</span><b class="tabular-nums" :class="qualityStats.noBrand ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noBrand }}</b></button>
             <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSize')"><span>缺尺寸</span><b class="tabular-nums" :class="qualityStats.noSize ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSize }}</b></button>
             <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSpec')"><span>缺规格</span><b class="tabular-nums" :class="qualityStats.noSpec ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSpec }}</b></button>
+            <button v-if="(uiOptions.required || []).length" class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('required')"><span>缺必填字段</span><b class="tabular-nums" :class="qualityStats.noRequired ? 'text-red-600' : 'text-muted-foreground'">{{ qualityStats.noRequired }}</b></button>
             <button class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('dup')"><span>重复名称（涉及款数）</span><b class="tabular-nums" :class="qualityStats.dupCount ? 'text-red-600' : 'text-muted-foreground'">{{ qualityStats.dupCount }}</b></button>
           </div>
           <p v-if="qualityStats.dupNames.length" class="mt-2 truncate text-xs text-muted-foreground">重复示例：{{ qualityStats.dupNames.slice(0, 6).join("、") }}</p>
@@ -2530,7 +2570,7 @@
           </div>
           <div class="space-y-2">
             <label v-for="(f, i) in fieldsDraft" :key="i" class="flex items-center gap-2 text-sm">
-              <span class="w-20 shrink-0 truncate text-muted-foreground">{{ f.name }}</span>
+              <span class="w-20 shrink-0 truncate text-muted-foreground">{{ f.name }}<span v-if="requiredSet.has(f.name)" class="text-destructive">*</span></span>
               <input v-if="f.type === 'text'" v-model="f.value" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" />
               <input v-else-if="f.type === 'number'" v-model.number="f.value" type="number" inputmode="decimal" :class="[inputCls, 'h-10 w-28 text-base']" />
               <input v-else-if="f.type === 'boolean'" v-model="f.value" type="checkbox" class="h-5 w-5 accent-primary" />

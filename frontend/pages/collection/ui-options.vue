@@ -10,7 +10,7 @@
 
   const loading = ref(true);
   const saving = ref(false);
-  const form = reactive({ sizes: "", specs: "", colors: "", materials: "" });
+  const form = reactive({ sizes: "", specs: "", colors: "", materials: "", required: "" });
 
   function toText(arr: string[] | undefined): string {
     return (arr || []).join("\n");
@@ -30,6 +30,7 @@
       form.specs = toText(d.specs);
       form.colors = toText(d.colors);
       form.materials = toText(d.materials);
+      form.required = toText(d.required);
     } catch (e) {
       toast.error("加载失败：" + ((e as Error)?.message ?? String(e)));
     } finally {
@@ -47,6 +48,7 @@
           specs: toArr(form.specs),
           colors: toArr(form.colors),
           materials: toArr(form.materials),
+          required: toArr(form.required),
         },
       });
       toast.success("已保存");
@@ -86,6 +88,10 @@
       <label class="block text-sm font-medium">
         材质
         <textarea v-model="form.materials" rows="6" class="mt-1 w-full rounded-lg border bg-background p-2 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="牛皮纸&#10;道林纸&#10;PP 封面"></textarea>
+      </label>
+      <label class="block text-sm font-medium md:col-span-2">
+        必填字段
+        <textarea v-model="form.required" rows="3" class="mt-1 w-full rounded-lg border bg-background p-2 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="品牌&#10;进价&#10;（填字段名；台账将标注 * 并做必填校验）"></textarea>
       </label>
       <div class="md:col-span-2">
         <Button :disabled="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
