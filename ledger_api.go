@@ -36,6 +36,7 @@ type ledgerRowOut struct {
 	Tags      []repo.TagSummary      `json:"tags"`
 	Fields    []repo.EntityFieldData `json:"fields"`
 	Notes     string                 `json:"notes"`
+	AssetID   repo.AssetID           `json:"assetId"`
 }
 
 type ledgerLocation struct {
@@ -86,6 +87,7 @@ func (a *app) handleLedgerAggregate() errchain.HandlerFunc {
 				UpdatedAt: s.UpdatedAt,
 				Tags:      s.Tags,
 				Fields:    []repo.EntityFieldData{},
+				AssetID:   s.AssetID,
 			}
 			if s.Parent != nil {
 				row.Parent = s.Parent.Name

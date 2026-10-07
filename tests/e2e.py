@@ -62,10 +62,11 @@ def main():
         # 打开台账
         page.goto(BASE + "/ledger", wait_until="load", timeout=30000)
         try:
-            page.wait_for_selector("table tbody tr, .card-enter-active, [class*='rounded-2xl']", timeout=20000)
+            page.wait_for_function(
+                "() => document.querySelectorAll('table tbody tr').length > 0", timeout=30000)
         except Exception as e:
             check("台账渲染", False, str(e)[:100])
-        time.sleep(2)
+        time.sleep(1)
 
         rows = page.eval_on_selector_all("table tbody tr", "els => els.length")
         check("台账有数据行", rows > 0, f"rows={rows}")

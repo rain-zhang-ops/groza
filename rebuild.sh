@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py; do
+for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go qr.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
 
@@ -56,7 +56,7 @@ mkdir -p "$HOME_DIR/backups"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BK="$HOME_DIR/backups/custom-$STAMP"
 mkdir -p "$BK"
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py rebuild.sh; do
+for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go qr.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py rebuild.sh; do
   cp -a "$HOME_DIR/$f" "$BK/$(basename $f)" 2>/dev/null || true
 done
 log "备份完成: $BK"
@@ -123,6 +123,7 @@ cp "$HOME_DIR/ledger_api.go"   "$WORK/backend/app/api/ledger.go"
 cp "$HOME_DIR/audit.go"        "$WORK/backend/app/api/audit.go"
 cp "$HOME_DIR/idempotency.go" "$WORK/backend/app/api/idempotency.go"
 cp "$HOME_DIR/metrics.go"     "$WORK/backend/app/api/metrics.go"
+cp "$HOME_DIR/qr.go"          "$WORK/backend/app/api/qr.go"
 cp "$HOME_DIR/biz.go"          "$WORK/backend/app/api/biz.go"
 cp "$HOME_DIR/ai_recognize.go" "$WORK/backend/app/api/ai_recognize.go"
 cp "$HOME_DIR/ui_options.go"   "$WORK/backend/app/api/ui_options.go"

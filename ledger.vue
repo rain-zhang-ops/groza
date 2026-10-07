@@ -17,6 +17,9 @@
   import MdiClose from "~icons/mdi/close";
   import MdiPackageVariantClosed from "~icons/mdi/package-variant-closed";
   import MdiAlertOutline from "~icons/mdi/alert-outline";
+  import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";
+  import MdiFileImportOutline from "~icons/mdi/file-import-outline";
+  import MdiQrcode from "~icons/mdi/qrcode";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -97,6 +100,141 @@
     addForm.size = p.size; addForm.color = p.color; addForm.spec = p.spec; addForm.material = p.material;
   }
   function locName(id: string) { return (locations.value.find(l => l.id === id) || {}).name || ""; }
+
+  // ---------- 数据体检 ----------
+  const qualityOpen = ref(false);
+  const qualityStats = computed(() => {
+    const list = rows.value.filter(r => !isTrashed(r));
+    const dup: Record<string, number> = {};
+    for (const r of list) { const k = r.name.trim().toLowerCase(); if (k) dup[k] = (dup[k] || 0) + 1; }
+    const dupNames = Object.entries(dup).filter(([, c]) => c > 1).map(([k]) => k);
+    return {
+      total: list.length,
+      noImg: list.filter(r => !r.thumb).length,
+      noPurchase: list.filter(r => r.purchase === null || r.purchase === 0).length,
+      noSell: list.filter(r => r.sell === null || r.sell === 0).length,
+      noSafety: list.filter(r => !(r.safety && r.safety > 0)).length,
+      noBrand: list.filter(r => !r.brand).length,
+      noSize: list.filter(r => !r.size).length,
+      noSpec: list.filter(r => !r.spec).length,
+      dupCount: dupNames.reduce((a, k) => a + (dup[k] || 0), 0),
+      dupNames,
+    };
+  });
+  function applyQuality(kind: string) {
+    onlyLow.value = false; showSummary.value = false;
+    Object.assign(filter, { brand: "", size: "", spec: "", color: "", material: "", q: "" });
+    if (kind === "dup") { filter.q = qualityStats.value.dupNames[0] || ""; dataFilter.value = ""; }
+    else dataFilter.value = kind;
+    qualityOpen.value = false;
+    filterOpen.value = false;
+  }
+
+  // ---------- 批量导入 ----------
+  const importOpen = ref(false);
+  const importText = ref("");
+  const importBusy = ref(false);
+  const importMsg = ref("");
+  const IMPORT_COLS = ["名称", "品牌", "尺寸", "规格", "颜色", "材质", "数量", "进价", "售价", "安全库存", "分类"];
+  const importRows = computed(() => {
+    const lines = importText.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return [] as Array<Record<string, string>>;
+    const sep = lines[0].includes("\t") ? "\t" : ",";
+    let start = 0;
+    const h = lines[0].split(sep).map(x => x.trim().toLowerCase());
+    if (h.includes("名称") || h.includes("name")) start = 1;
+    const out: Array<Record<string, string>> = [];
+    for (let i = start; i < lines.length; i++) {
+      const cells = lines[i].split(sep).map(x => x.trim());
+      if (!cells[0]) continue;
+      const o: Record<string, string> = {};
+      IMPORT_COLS.forEach((c, idx) => { o[c] = cells[idx] || ""; });
+      out.push(o);
+    }
+    return out;
+  });
+  async function importOne(row: Record<string, string>, fallbackLoc: string) {
+    const name = (row["名称"] || "").trim();
+    if (!name) throw new Error("无名称");
+    const locName = (row["分类"] || "").trim();
+    const loc = locName ? locations.value.find(l => l.name === locName) : undefined;
+    const parentId = loc?.id || fallbackLoc;
+    const qty = Number(row["数量"]) || 0;
+    const created = await $fetch<Record<string, any>>(`/api/v1/templates/${TPL_ID}/create-item`, {
+      method: "POST",
+      body: { name, parentId, entityTypeId: TYPE_ID, quantity: qty, tagIds: [] },
+    });
+    const d = await $fetch<Record<string, any>>(`/api/v1/entities/${created.id}`);
+    const brand = (row["品牌"] || loc?.name || "").trim();
+    const fields = (d.fields || []).map((f: Record<string, any>) => {
+      const x: Record<string, any> = { id: f.id, name: f.name, type: f.type };
+      if (f.type === "text") x.textValue = f.textValue ?? ""; else x.numberValue = f.numberValue ?? 0;
+      if (f.name === "品牌") x.textValue = brand;
+      else if (f.name === "尺寸") x.textValue = row["尺寸"] || "";
+      else if (f.name === "规格") x.textValue = row["规格"] || "";
+      else if (f.name === "颜色") x.textValue = row["颜色"] || "";
+      else if (f.name === "材质") x.textValue = row["材质"] || "";
+      else if (f.name === "进价") x.numberValue = Number(row["进价"]) || 0;
+      else if (f.name === "售价") x.numberValue = Number(row["售价"]) || 0;
+      else if (f.name === "安全库存") x.numberValue = Number(row["安全库存"]) || 0;
+      return x;
+    });
+    const tag = tags.value.find(t => t.name === brand);
+    await $fetch(`/api/v1/entities/${created.id}`, {
+      method: "PUT",
+      body: { name, entityTypeId: d.entityType?.id ?? TYPE_ID, fields, notes: "", quantity: qty, parentId, tagIds: tag ? [tag.id] : [] },
+    });
+  }
+  async function doImport() {
+    const list = importRows.value;
+    if (!list.length) { importMsg.value = "没有可导入的行"; return; }
+    const fallbackLoc = addForm.loc || (locations.value[0] || {}).id || "";
+    if (!fallbackLoc) { importMsg.value = "无可用分类"; return; }
+    importBusy.value = true;
+    let ok = 0, bad = 0;
+    importMsg.value = `导入中… 0/${list.length}`;
+    for (let i = 0; i < list.length; i++) {
+      try { await importOne(list[i], fallbackLoc); ok++; } catch (_e) { bad++; }
+      importMsg.value = `导入中… ${i + 1}/${list.length}（成功 ${ok} 失败 ${bad}）`;
+    }
+    importBusy.value = false;
+    importMsg.value = `完成：成功 ${ok}，失败 ${bad}`;
+    importText.value = "";
+    await load();
+  }
+
+  // ---------- 二维码标签 ----------
+  const qrOpen = ref(false);
+  const qrData = ref("");
+  const qrTitle = ref("");
+  function qrSrcFor(v: string) { return `/api/v1/qr?data=${encodeURIComponent(v)}`; }
+  function showQR(r: Row) {
+    const a = String(r.raw.assetId || "");
+    qrData.value = a || r.name;
+    qrTitle.value = r.name + (a ? `（${a}）` : "");
+    qrOpen.value = true;
+  }
+  function printQR(name: string, data: string) {
+    const w = window.open("", "_blank", "width=420,height=600");
+    if (!w) return;
+    const img = `${location.origin}/api/v1/qr?data=${encodeURIComponent(data)}`;
+    w.document.write(`<html><head><title>二维码</title></head><body style="text-align:center;font-family:sans-serif;padding:16px"><div style="font-size:16px;margin-bottom:12px">${name}</div><img style="width:320px" src="${img}" /><div style="margin-top:8px;color:#333">${data}</div></body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); w.print(); } catch (_e) { /* ignore */ } }, 600);
+  }
+  function printFiltered() {
+    const list = sorted.value.filter(r => !isTrashed(r)).slice(0, 300);
+    if (!list.length) { flash("无可打印项"); return; }
+    const w = window.open("", "_blank");
+    if (!w) return;
+    const cards = list.map(r => {
+      const a = String(r.raw.assetId || r.name);
+      return `<div style="display:inline-block;width:190px;margin:6px;text-align:center;font-family:sans-serif;vertical-align:top"><div style="font-size:12px;height:32px;overflow:hidden">${r.name}</div><img style="width:150px" src="${location.origin}/api/v1/qr?data=${encodeURIComponent(a)}"/><div style="font-size:11px;color:#444">${a}</div></div>`;
+    }).join("");
+    w.document.write(`<html><head><title>二维码标签</title></head><body>${cards}</body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); w.print(); } catch (_e) { /* ignore */ } }, 800);
+  }
   function addItem() {
     addForm.loc = addForm.loc || (locations.value[0] || {}).id || "";
     addOpen.value = true;
@@ -926,6 +1064,9 @@
       case "soldout": return isSoldOut(r);
       case "low": return isLow(r);
       case "trashed": return isTrashed(r);
+      case "noBrand": return !r.brand;
+      case "noSize": return !r.size;
+      case "noSpec": return !r.spec;
       default: return true;
     }
   }
@@ -1177,6 +1318,8 @@
               <button v-if="!isMobile" :class="[btnGhost, 'active:scale-95']" @click="openScan"><MdiBarcodeScan class="h-4 w-4" /> 扫码</button>
               <button v-if="canInstall" :class="[btnGhost, 'active:scale-95']" @click="install"><MdiCellphoneArrowDown class="h-4 w-4" /> 安装</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="toggleNotify"><MdiBellRing class="h-4 w-4" /> {{ notifyOn ? "关闭提醒" : "补货提醒" }}</button>
+              <button :class="[btnGhost, 'active:scale-95']" @click="qualityOpen = true"><MdiClipboardCheckOutline class="h-4 w-4" /> 数据体检</button>
+              <button :class="[btnGhost, 'active:scale-95']" @click="importOpen = true"><MdiFileImportOutline class="h-4 w-4" /> 批量导入</button>
               <Transition name="pop">
                 <button v-if="undoLast" class="inline-flex items-center gap-1 rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-600 transition-all hover:bg-amber-500/20 active:scale-95" @click="undo"><MdiUndo class="h-4 w-4" /> 撤销</button>
               </Transition>
@@ -1193,6 +1336,9 @@
               <div class="absolute right-0 z-40 mt-1 w-44 origin-top-right rounded-lg border bg-popover p-1.5 text-sm shadow-lg animate-pop">
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="toggleNotify"><MdiBellRing class="mr-1.5 inline h-4 w-4" />{{ notifyOn ? "关闭补货提醒" : "开启补货提醒" }}</button>
                 <button v-if="canInstall" class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="install"><MdiCellphoneArrowDown class="mr-1.5 inline h-4 w-4" />安装到桌面</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="qualityOpen = true"><MdiClipboardCheckOutline class="mr-1.5 inline h-4 w-4" />数据体检</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="importOpen = true"><MdiFileImportOutline class="mr-1.5 inline h-4 w-4" />批量导入</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openScan"><MdiBarcodeScan class="mr-1.5 inline h-4 w-4" />扫码</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="load"><MdiRefresh class="mr-1.5 inline h-4 w-4" />刷新数据</button>
                 <button v-if="undoLast" class="block w-full rounded px-2.5 py-2.5 text-left text-amber-600 transition hover:bg-muted" @click="undo"><MdiUndo class="mr-1.5 inline h-4 w-4" />撤销上一步</button>
                 <label class="flex items-center gap-2 rounded px-2.5 py-2.5" title="联网搜索 1 元/次，请省着用"><input v-model="aiSearch" type="checkbox" class="accent-primary" /> 联网识别</label>
@@ -1311,6 +1457,9 @@
               <option value="noSafety">未设安全库存</option>
               <option value="noImg">无图</option>
               <option value="noPrice">无价格</option>
+              <option value="noBrand">无品牌</option>
+              <option value="noSize">无尺寸</option>
+              <option value="noSpec">无规格</option>
             </select>
           </label>
           <label :class="[chip, 'active:scale-95']"><input v-model="onlyLow" type="checkbox" class="accent-primary" /> 只看待补货</label>
@@ -1484,10 +1633,13 @@
                 <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setSafety(r)" />
               </label>
             </div>
-            <div class="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
-              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-3 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
-                <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
-              </button>
+            <div class="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div class="flex items-center gap-2">
+                <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-3 text-xs font-medium transition active:scale-95" @click="showQR(r)"><MdiQrcode class="h-4 w-4" />二维码</button>
+                <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-3 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
+                  <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
+                </button>
+              </div>
               <span>更新 {{ fmtDate(r.updated) }}</span>
             </div>
           </div>
@@ -1567,9 +1719,12 @@
               </td>
               <td v-if="countMode" :class="[cellPad, 'text-center']"><span :class="diffClass(r)">{{ diffText(r) }}</span></td>
               <td :class="[cellPad, 'text-center']">
-                <button class="mx-auto grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
-                  <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
-                </button>
+                <div class="flex items-center justify-center gap-1">
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="二维码标签" @click="showQR(r)"><MdiQrcode class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
+                    <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1625,6 +1780,9 @@
                 <option value="noSafety">未设安全库存</option>
                 <option value="noImg">无图</option>
                 <option value="noPrice">无价格</option>
+                <option value="noBrand">无品牌</option>
+                <option value="noSize">无尺寸</option>
+                <option value="noSpec">无规格</option>
               </select>
             </label>
             <label class="flex items-center gap-2 text-base"><input v-model="countMode" type="checkbox" class="h-5 w-5 accent-primary" /> 盘点模式</label>
@@ -1726,6 +1884,74 @@
     <Transition name="fade">
       <div v-if="preview" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" @click="preview = null">
         <img :src="preview" class="animate-pop max-h-[90vh] max-w-[90vw] rounded-xl shadow-2xl" />
+      </div>
+    </Transition>
+
+    <!-- 数据体检 -->
+    <Transition name="fade">
+      <div v-if="qualityOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="qualityOpen = false">
+        <div class="max-h-[92vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="font-semibold">数据体检 · {{ qualityStats.total }} 款</span>
+            <button class="rounded-lg p-1 hover:bg-muted" @click="qualityOpen = false"><MdiClose class="h-5 w-5" /></button>
+          </div>
+          <p class="mb-2 text-xs text-muted-foreground">点任意项以筛选出对应的物品，便于批量修正。</p>
+          <div class="grid grid-cols-2 gap-2 text-sm">
+            <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noPurchase')"><span>缺进价</span><b class="tabular-nums" :class="qualityStats.noPurchase ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noPurchase }}</b></button>
+            <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noImg')"><span>缺图</span><b class="tabular-nums" :class="qualityStats.noImg ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noImg }}</b></button>
+            <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSafety')"><span>缺安全库存</span><b class="tabular-nums" :class="qualityStats.noSafety ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSafety }}</b></button>
+            <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noBrand')"><span>缺品牌</span><b class="tabular-nums" :class="qualityStats.noBrand ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noBrand }}</b></button>
+            <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSize')"><span>缺尺寸</span><b class="tabular-nums" :class="qualityStats.noSize ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSize }}</b></button>
+            <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSpec')"><span>缺规格</span><b class="tabular-nums" :class="qualityStats.noSpec ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSpec }}</b></button>
+            <button class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('dup')"><span>重复名称（涉及款数）</span><b class="tabular-nums" :class="qualityStats.dupCount ? 'text-red-600' : 'text-muted-foreground'">{{ qualityStats.dupCount }}</b></button>
+          </div>
+          <p v-if="qualityStats.dupNames.length" class="mt-2 truncate text-xs text-muted-foreground">重复示例：{{ qualityStats.dupNames.slice(0, 6).join("、") }}</p>
+          <button :class="[btnGhost, 'mt-3 w-full justify-center py-2.5 text-base']" @click="printFiltered">打印当前筛选二维码</button>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 批量导入 -->
+    <Transition name="fade">
+      <div v-if="importOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="importOpen = false">
+        <div class="max-h-[92vh] w-full max-w-2xl overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="font-semibold">批量导入</span>
+            <button class="rounded-lg p-1 hover:bg-muted" @click="importOpen = false"><MdiClose class="h-5 w-5" /></button>
+          </div>
+          <p class="mb-2 text-xs text-muted-foreground">每行一条，列用 Tab 或逗号分隔；顺序：名称,品牌,尺寸,规格,颜色,材质,数量,进价,售价,安全库存,分类。可含表头。分类填已有品牌名（否则用下方默认分类）。</p>
+          <textarea v-model="importText" rows="7" class="w-full rounded-lg border bg-background p-2 font-mono text-xs outline-none focus:ring-2 focus:ring-ring/40" placeholder="名称	品牌	尺寸	规格	颜色	材质	数量	进价	售价	安全库存	分类"></textarea>
+          <div class="mt-2 flex items-center gap-2">
+            <label class="text-xs text-muted-foreground">默认分类
+              <select v-model="addForm.loc" :class="[inputCls, 'ml-1']"><option v-for="l in locations" :key="l.id" :value="l.id">{{ l.name }}</option></select>
+            </label>
+            <span class="ml-auto text-xs text-muted-foreground">解析到 {{ importRows.length }} 行</span>
+          </div>
+          <div v-if="importMsg" class="mt-2 text-sm text-primary">{{ importMsg }}</div>
+          <div class="mt-3 flex gap-2">
+            <button :class="[btnGhost, 'flex-1 justify-center py-2.5 text-base']" @click="importOpen = false">关闭</button>
+            <button :class="[btnPrimary, 'flex-1 justify-center py-2.5 text-base']" :disabled="importBusy || !importRows.length" @click="doImport">{{ importBusy ? "导入中…" : `导入 ${importRows.length} 行` }}</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 二维码 -->
+    <Transition name="fade">
+      <div v-if="qrOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="qrOpen = false">
+        <div class="w-full max-w-xs rounded-2xl bg-card p-4 text-center shadow-2xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="mb-2 flex items-center justify-between">
+            <span class="text-sm font-semibold">二维码标签</span>
+            <button class="rounded-lg p-1 hover:bg-muted" @click="qrOpen = false"><MdiClose class="h-5 w-5" /></button>
+          </div>
+          <img :src="qrSrcFor(qrData)" class="mx-auto h-56 w-56 rounded-lg border bg-white object-contain" alt="二维码" />
+          <div class="mt-2 text-sm font-medium">{{ qrTitle }}</div>
+          <div class="text-xs text-muted-foreground">{{ qrData }}</div>
+          <div class="mt-3 flex gap-2">
+            <button :class="[btnGhost, 'flex-1 justify-center']" @click="qrOpen = false">关闭</button>
+            <button :class="[btnPrimary, 'flex-1 justify-center']" @click="printQR(qrTitle, qrData)">打印</button>
+          </div>
+        </div>
       </div>
     </Transition>
 

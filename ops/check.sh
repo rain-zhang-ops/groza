@@ -23,7 +23,7 @@ echo "== node --check =="
 if node --check lib/offline-queue.js; then echo "  ok"; else fail=1; fi
 
 echo "== 定制文件齐全 =="
-for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py tests/smoke.py tests/e2e.py; do
+for f in ledger.vue ui-options.vue intake.vue lib/offline-queue.js ledger_api.go biz.go audit.go idempotency.go metrics.go qr.go ai_recognize.go ui_options.go trash.go patches/patch_upstream.py tests/smoke.py tests/e2e.py; do
   [ -f "$f" ] && echo "  ok  $f" || { echo "  缺失 $f"; fail=1; }
 done
 
