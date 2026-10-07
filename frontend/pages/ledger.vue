@@ -1659,35 +1659,60 @@
     for (const r of paged.value) sel[r.id] = !all;
   }
   function clearSel() { for (const k of Object.keys(sel)) sel[k] = false; }
-  async function batchQty() {
+
+  // 批量差异预览：先预览 → 确认 → 执行；执行后可用既有「撤销」回退
+  const batchPreview = ref<{ label: string; rows: Array<{ name: string; from: string; to: string }>; total: number; run: () => Promise<void> } | null>(null);
+  const batchRunning = ref(false);
+  function openBatchPreview(label: string, rows: Array<{ name: string; from: string; to: string }>, run: () => Promise<void>) {
+    batchPreview.value = { label, rows: rows.slice(0, 50), total: rows.length, run };
+  }
+  async function confirmBatch() {
+    const bp = batchPreview.value;
+    if (!bp) return;
+    batchRunning.value = true;
+    try { await bp.run(); } finally { batchRunning.value = false; batchPreview.value = null; }
+  }
+  function cancelBatch() { batchPreview.value = null; }
+
+  function batchQty() {
     const v = Number(batch.qty);
     if (!Number.isFinite(v) || v < 0) { flash("填批量数量"); return; }
-    const items: UndoItem[] = selectedRows.value.map(r => ({ row: r, field: "qty", prev: r.qty }));
-    for (const r of selectedRows.value) { await $fetch(`/api/v1/entities/${r.id}`, { method: "PATCH", body: { quantity: v } }); r.qty = v; }
-    recordUndo("批量数量", items);
-    flash(`批量改数量完成（${selectedCount.value} 条）`);
+    const targets = selectedRows.value;
+    openBatchPreview(`批量改数量 → ${v}`, targets.map(r => ({ name: r.name, from: String(r.qty), to: String(v) })), async () => {
+      const items: UndoItem[] = targets.map(r => ({ row: r, field: "qty", prev: r.qty }));
+      for (const r of targets) { await $fetch(`/api/v1/entities/${r.id}`, { method: "PATCH", body: { quantity: v } }); r.qty = v; }
+      recordUndo("批量数量", items);
+      flash(`批量改数量完成（${targets.length} 条）`);
+    });
   }
-  async function batchPrice(which: "purchase" | "sell") {
+  function batchPrice(which: "purchase" | "sell") {
     const v = num(which === "purchase" ? batch.purchase : batch.sell);
     if (v === null) { flash("填批量价格"); return; }
-    const items: UndoItem[] = selectedRows.value.map(r => ({ row: r, field: which, prev: r[which] }));
-    for (const r of selectedRows.value) {
-      const ok = await putFields(r, { [which === "purchase" ? "进价" : "售价"]: v });
-      if (ok) r[which] = v;
-    }
-    recordUndo(which === "purchase" ? "批量进价" : "批量售价", items);
-    flash(`批量改${which === "purchase" ? "进价" : "售价"}完成（${selectedCount.value} 条）`);
+    const targets = selectedRows.value;
+    const fld = which === "purchase" ? "进价" : "售价";
+    openBatchPreview(`批量改${fld} → ${v}`, targets.map(r => ({ name: r.name, from: fmt(r[which]), to: fmt(v) })), async () => {
+      const items: UndoItem[] = targets.map(r => ({ row: r, field: which, prev: r[which] }));
+      for (const r of targets) {
+        const ok = await putFields(r, { [fld]: v });
+        if (ok) r[which] = v;
+      }
+      recordUndo(which === "purchase" ? "批量进价" : "批量售价", items);
+      flash(`批量改${fld}完成（${targets.length} 条）`);
+    });
   }
-  async function batchSafety() {
+  function batchSafety() {
     const v = num(batch.safety);
     if (v === null) { flash("填批量安全库存"); return; }
-    const items: UndoItem[] = selectedRows.value.map(r => ({ row: r, field: "safety", prev: r.safety }));
-    for (const r of selectedRows.value) {
-      const ok = await putFields(r, { 安全库存: v });
-      if (ok) r.safety = v;
-    }
-    recordUndo("批量安全库存", items);
-    flash(`批量设安全库存完成（${selectedCount.value} 条）`);
+    const targets = selectedRows.value;
+    openBatchPreview(`批量设安全库存 → ${v}`, targets.map(r => ({ name: r.name, from: String(r.safety ?? ""), to: String(v) })), async () => {
+      const items: UndoItem[] = targets.map(r => ({ row: r, field: "safety", prev: r.safety }));
+      for (const r of targets) {
+        const ok = await putFields(r, { 安全库存: v });
+        if (ok) r.safety = v;
+      }
+      recordUndo("批量安全库存", items);
+      flash(`批量设安全库存完成（${targets.length} 条）`);
+    });
   }
   async function batchTag() {
     if (!batch.tag) { flash("选标签"); return; }
@@ -2071,7 +2096,32 @@
         </div>
       </Transition>
 
-      <!-- 盘点栏 -->
+      <!-- 批量差异预览 -->
+      <Transition name="fold">
+        <div v-if="batchPreview" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" @click.self="cancelBatch">
+          <div class="max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
+            <div class="mb-2 flex items-center gap-2">
+              <span class="font-semibold">{{ batchPreview.label }}</span>
+              <span class="text-xs text-muted-foreground">共 {{ batchPreview.total }} 条</span>
+              <button class="ml-auto rounded-lg p-1 text-muted-foreground hover:bg-muted" @click="cancelBatch"><MdiClose class="h-5 w-5" /></button>
+            </div>
+            <p class="mb-2 text-xs text-muted-foreground">确认后执行；执行后可用顶部「撤销」回退。</p>
+            <div class="divide-y rounded-lg border text-sm">
+              <div v-for="(d, i) in batchPreview.rows" :key="i" class="flex items-center gap-2 p-2">
+                <span class="min-w-0 flex-1 truncate">{{ d.name }}</span>
+                <span class="text-muted-foreground line-through">{{ d.from }}</span>
+                <span class="text-muted-foreground">→</span>
+                <span class="font-medium text-primary">{{ d.to }}</span>
+              </div>
+              <div v-if="batchPreview.total > batchPreview.rows.length" class="p-2 text-center text-xs text-muted-foreground">…等 {{ batchPreview.total }} 条</div>
+            </div>
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <button :class="[btnGhost, 'active:scale-95']" :disabled="batchRunning" @click="cancelBatch">取消</button>
+              <button :class="[btnPrimary, 'active:scale-95']" :disabled="batchRunning" @click="confirmBatch">{{ batchRunning ? "执行中…" : "确认执行" }}</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
       <Transition name="fold">
         <div v-if="countMode" class="mb-4 flex items-center gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
           <MdiAlertOutline class="h-5 w-5 text-amber-600" />
