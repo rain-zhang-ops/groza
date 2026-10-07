@@ -74,6 +74,8 @@ def main():
         body = page.content()
         check("侧边栏含「进货」", "进货" in body)
         check("侧边栏不含「收银」", "收银" not in body)
+        loc_links = page.eval_on_selector_all("a[href='/locations']", "els => els.length")
+        check("侧栏不含「分类」入口", loc_links == 0, f"links={loc_links}")
 
         nuxt_err = [e for e in errors if "[nuxt]" in e]
         check("无 Nuxt 控制台错误", not nuxt_err, "; ".join(nuxt_err[:2]))

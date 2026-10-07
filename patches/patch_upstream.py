@@ -215,6 +215,21 @@ def main():
         'navigateTo(`/ledger?q=${encodeURIComponent(search.value)}`);',
         "nav-topsearch-to-ledger")
 
+    # 侧栏移除「分类」入口（改到 集合 → 分类 tab）
+    dv_s = open(dv, encoding="utf-8").read()
+    loc_block = ('    {\n'
+                 '      icon: MdiFileTree,\n'
+                 '      id: 1,\n'
+                 '      active: computed(() => route.path === "/locations"),\n'
+                 '      name: computed(() => t("menu.locations")),\n'
+                 '      to: "/locations",\n'
+                 '    },\n')
+    if loc_block in dv_s:
+        open(dv, "w", encoding="utf-8").write(dv_s.replace(loc_block, "", 1))
+        done("nav-hide-locations（分类移入设置 tab）")
+    else:
+        skip("nav-hide-locations")
+
     # ---- 4. 侧边栏折叠样式两处 ----
     rep(dv,
         'class="flex size-12 items-center justify-center"',
@@ -293,6 +308,16 @@ def main():
         if changed:
             open(coll, "w", encoding="utf-8").write(c)
             done("collection-ui-options-tab")
+
+    # 集合页「分类」tab（指向 /locations）
+    rep(coll,
+        '  import MdiTune from "~icons/mdi/tune";',
+        '  import MdiTune from "~icons/mdi/tune";\n  import MdiFileTree from "~icons/mdi/file-tree";',
+        "collection-locations-icon")
+    rep(coll,
+        '    {\n      id: "ui-options",\n      label: "选项配置",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },',
+        '    {\n      id: "ui-options",\n      label: "选项配置",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },\n    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
+        "collection-locations-tab")
 
     # ---- 8. 进销存 biz 路由 ----
     p = f"{be}/app/api/routes.go"
