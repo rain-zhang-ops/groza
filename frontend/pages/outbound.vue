@@ -31,7 +31,6 @@
   };
 
   const isMobile = useMediaQuery("(max-width: 768px)");
-  const tab = ref<"do" | "log">("do");
 
   const rows = ref<Row[]>([]);
   const outbounds = ref<Outbound[]>([]);
@@ -287,18 +286,12 @@
         <h1 class="text-lg font-semibold tracking-tight md:text-xl">出货出库</h1>
         <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex items-center gap-2">
+          <NuxtLink to="/outbound-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库记录</NuxtLink>
           <NuxtLink to="/intake" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">进货</NuxtLink>
           <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
         </div>
       </header>
 
-      <!-- 移动端：出库 / 记录 切换 -->
-      <div v-if="isMobile" class="mb-3 grid grid-cols-2 gap-1 rounded-xl border bg-card p-1 text-sm">
-        <button class="rounded-lg py-2 font-medium transition" :class="tab === 'do' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'" @click="tab = 'do'">出库</button>
-        <button class="rounded-lg py-2 font-medium transition" :class="tab === 'log' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'" @click="tab = 'log'">记录 {{ outbounds.length }}</button>
-      </div>
-
-      <template v-if="!isMobile || tab === 'do'">
         <!-- 去向/原因 + 备注 -->
         <section class="mb-3 rounded-xl border bg-card p-3 shadow-sm">
           <div class="flex flex-wrap items-center gap-2">
@@ -373,42 +366,13 @@
             <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving" @click="submit">{{ saving ? "保存中…" : "保存出库单" }}</button>
           </div>
         </section>
-      </template>
-
-      <!-- 出库记录 -->
-      <template v-if="!isMobile || tab === 'log'">
-        <section>
-          <h2 class="mb-2 text-sm font-semibold text-muted-foreground">出库记录</h2>
-          <div class="space-y-2">
-            <div v-for="t in outbounds" :key="t.id" class="rounded-xl border bg-card px-3 py-2.5 text-sm" :class="t.rolledBack ? 'opacity-50' : ''">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="font-medium tabular-nums">{{ dt(t.ts) }}</span>
-                <span v-if="t.reason" class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{{ t.reason }}</span>
-                <span class="text-xs text-muted-foreground">{{ t.items.length }} 款</span>
-                <button
-                  v-if="!t.rolledBack"
-                  class="ml-auto rounded-lg px-2 py-1 text-xs text-destructive transition hover:bg-destructive/10 disabled:opacity-40"
-                  :disabled="rollbackBusy === t.id"
-                  @click="rollback(t)"
-                >回滚</button>
-                <span v-else class="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">已回滚</span>
-              </div>
-              <div v-if="t.note" class="mt-1 text-xs text-muted-foreground">备注：{{ t.note }}</div>
-              <div class="mt-1 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                <span v-for="it in t.items" :key="it.entityId" class="rounded-md bg-muted px-1.5 py-0.5">{{ it.name }} ×{{ it.count }}</span>
-              </div>
-            </div>
-            <div v-if="!outbounds.length" class="py-6 text-center text-sm text-muted-foreground">还没有出库单</div>
-          </div>
-        </section>
-      </template>
 
       <p v-if="msg" class="mt-3 text-center text-xs text-muted-foreground">{{ msg }}</p>
     </div>
 
     <!-- 移动端：底部常驻保存条 -->
     <div
-      v-if="isMobile && tab === 'do' && cartList.length"
+      v-if="isMobile && cartList.length"
       class="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md"
       style="padding-bottom: calc(0.5rem + env(safe-area-inset-bottom))"
     >
