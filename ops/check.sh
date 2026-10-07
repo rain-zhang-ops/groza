@@ -12,7 +12,7 @@ for f in rebuild.sh ops/*.sh; do
 done
 
 echo "== python 语法 =="
-if python3 -m py_compile patches/patch_upstream.py tests/smoke.py tests/e2e.py; then echo "  ok"; else fail=1; fi
+if python3 -m py_compile patches/patch_upstream.py tests/smoke.py tests/e2e.py ops/migrate/migrate.py; then echo "  ok"; else fail=1; fi
 
 echo "== gofmt =="
 bad="$(gofmt -l ./backend/*.go 2>/dev/null || true)"

@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/ai_recognize.go backend/ui_options.go backend/trash.go frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts patches/patch_upstream.py"
+CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/trash.go frontend/pages/ledger.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts patches/patch_upstream.py"
 for f in $CUSTOM_FILES; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
@@ -129,6 +129,7 @@ cp "$HOME_DIR/backend/template_sync.go" "$WORK/backend/app/api/template_sync.go"
 cp "$HOME_DIR/backend/biz.go"          "$WORK/backend/app/api/biz.go"
 cp "$HOME_DIR/backend/ai_recognize.go" "$WORK/backend/app/api/ai_recognize.go"
 cp "$HOME_DIR/backend/ui_options.go"   "$WORK/backend/app/api/ui_options.go"
+cp "$HOME_DIR/backend/gx_config.go"    "$WORK/backend/app/api/gx_config.go"
 cp "$HOME_DIR/backend/trash.go"        "$WORK/backend/app/api/trash.go"
 cp "$HOME_DIR/frontend/pages/ledger.vue" "$FE_DIR/pages/ledger.vue"
 cp "$HOME_DIR/frontend/pages/intake.vue" "$FE_DIR/pages/intake.vue"
@@ -228,6 +229,15 @@ for _ in $(seq 1 25); do
 done
 docker ps --filter "name=$CONTAINER" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
 curl -sS -I -m 8 "$HEALTH_URL" | head -1
+
+# ---------------- gx_ 领域表（幂等：只建表，不动数据）----------------
+if [ -f "$HOME_DIR/ops/migrate/schema_v2.sql" ]; then
+  log "确保 gx_ 领域表就绪（仅 CREATE IF NOT EXISTS）"
+  docker run --rm -v "$DATA_VOL":/data -v "$HOME_DIR/ops/migrate":/mig:ro \
+    public.ecr.aws/docker/library/python:3-alpine \
+    python -c "import sqlite3;c=sqlite3.connect('/data/homebox.db');c.executescript(open('/mig/schema_v2.sql').read());c.commit()" \
+    || log "警告：gx_ 建表失败（可稍后运行 ops/migrate.sh）"
+fi
 
 # ---------------- 冒烟测试（可选）----------------
 if [ "${SMOKE:-1}" = "1" ] && [ -x "$HOME_DIR/tests/smoke.py" ]; then

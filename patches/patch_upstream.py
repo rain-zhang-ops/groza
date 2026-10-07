@@ -337,7 +337,9 @@ def main():
                         "\t\tr.Get(\"/trash\", chain.ToHandlerFunc(a.handleTrashGet(), userMW...))\n"
                         "\t\tr.Put(\"/trash\", chain.ToHandlerFunc(a.handleTrashPut(), userMW...))\n"
                         "\t\tr.Get(\"/audit\", chain.ToHandlerFunc(a.handleAuditGet(), userMW...))\n"
-                        "\t\tr.Get(\"/metrics\", chain.ToHandlerFunc(a.handleMetrics(), userMW...))")
+                        "\t\tr.Get(\"/metrics\", chain.ToHandlerFunc(a.handleMetrics(), userMW...))\n"
+                        "\t\tr.Get(\"/gx/config\", chain.ToHandlerFunc(a.handleGxConfigGet(), userMW...))\n"
+                        "\t\tr.Put(\"/gx/config\", chain.ToHandlerFunc(a.handleGxConfigPut(), userMW...))")
         if anchor not in s:
             fail("routes-ledger", "userMW 锚点未找到")
         else:
