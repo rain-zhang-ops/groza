@@ -312,7 +312,11 @@ func (a *app) handleTrash2Put() errchain.HandlerFunc {
 		} else {
 			_ = os.WriteFile(trashPathV2, b, 0o644)
 		}
-		auditLog("trash2.mark", map[string]any{"marked": len(out.Entries)})
+		markedIDs := make([]string, 0, len(out.Entries))
+		for k := range out.Entries {
+			markedIDs = append(markedIDs, k)
+		}
+		auditLog("trash2.mark", map[string]any{"marked": len(out.Entries), "ids": markedIDs})
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(b)
 		return nil

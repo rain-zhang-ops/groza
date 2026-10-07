@@ -53,20 +53,48 @@ func (a *app) handleAuditGet() errchain.HandlerFunc {
 				limit = n
 			}
 		}
-		out := []json.RawMessage{}
+		want := r.URL.Query().Get("entityId")
+		var all []string
 		if data, err := os.ReadFile(auditPath); err == nil {
-			lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
-			if len(lines) > limit {
-				lines = lines[len(lines)-limit:]
-			}
-			for _, ln := range lines {
+			for _, ln := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
 				ln = strings.TrimSpace(ln)
 				if ln == "" || !json.Valid([]byte(ln)) {
 					continue
 				}
-				out = append(out, json.RawMessage(ln))
+				if want != "" && !auditMatches(ln, want) {
+					continue
+				}
+				all = append(all, ln)
 			}
+		}
+		if len(all) > limit {
+			all = all[len(all)-limit:]
+		}
+		out := make([]json.RawMessage, 0, len(all))
+		for _, ln := range all {
+			out = append(out, json.RawMessage(ln))
 		}
 		return server.JSON(w, http.StatusOK, out)
 	}
+}
+
+// auditMatches 判断一条审计记录是否与某实体相关（entityId 字段或 ids/entityIds 数组包含）。
+func auditMatches(line, id string) bool {
+	var rec map[string]any
+	if json.Unmarshal([]byte(line), &rec) != nil {
+		return false
+	}
+	if s, ok := rec["entityId"].(string); ok && s == id {
+		return true
+	}
+	for _, key := range []string{"ids", "entityIds"} {
+		if arr, ok := rec[key].([]any); ok {
+			for _, v := range arr {
+				if s, ok := v.(string); ok && s == id {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

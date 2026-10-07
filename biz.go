@@ -253,7 +253,11 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 		if err := saveIntakes(is); err != nil {
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
-		auditLog("intake.create", map[string]any{"intakeId": ii.ID, "items": len(ii.Items), "supplier": ii.Supplier})
+		eids := make([]string, 0, len(ii.Items))
+		for _, it := range ii.Items {
+			eids = append(eids, it.EntityID)
+		}
+		auditLog("intake.create", map[string]any{"intakeId": ii.ID, "items": len(ii.Items), "supplier": ii.Supplier, "entityIds": eids})
 		resp := map[string]any{"intake": ii, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)
@@ -334,7 +338,11 @@ func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 		if err := saveIntakes(is); err != nil {
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
-		auditLog("intake.rollback", map[string]any{"intakeId": t.ID, "items": len(t.Items)})
+		eids := make([]string, 0, len(t.Items))
+		for _, it := range t.Items {
+			eids = append(eids, it.EntityID)
+		}
+		auditLog("intake.rollback", map[string]any{"intakeId": t.ID, "items": len(t.Items), "entityIds": eids})
 		resp := map[string]any{"intake": t, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)

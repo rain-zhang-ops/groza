@@ -20,6 +20,9 @@
   import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";
   import MdiFileImportOutline from "~icons/mdi/file-import-outline";
   import MdiQrcode from "~icons/mdi/qrcode";
+  import MdiContentCopy from "~icons/mdi/content-copy";
+  import MdiHistory from "~icons/mdi/history";
+  import MdiDownload from "~icons/mdi/download";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -63,7 +66,7 @@
   const MATERIAL_WORDS = ["金属", "塑料"];
   const addOpen = ref(false);
   const addSaving = ref(false);
-  const addForm = reactive({ name: "", size: "", color: "", spec: "", material: "塑料", qty: 0 as number, purchase: null as number | null, sell: null as number | null, loc: "", autoSplit: true });
+  const addForm = reactive({ name: "", size: "", color: "", spec: "", material: "塑料", qty: 0 as number, purchase: null as number | null, sell: null as number | null, loc: "", autoSplit: true, keep: false });
   const addNew = reactive({ size: false, color: false, spec: false, material: false });
   const uiOptions = ref<{ sizes: string[]; specs: string[]; colors: string[]; materials: string[] }>({ sizes: [], specs: [], colors: [], materials: [] });
   function optionsFor(key: "size" | "color" | "spec" | "material", preset: string[]): string[] {
@@ -100,6 +103,88 @@
     addForm.size = p.size; addForm.color = p.color; addForm.spec = p.spec; addForm.material = p.material;
   }
   function locName(id: string) { return (locations.value.find(l => l.id === id) || {}).name || ""; }
+
+  function buzz(ms = 15) { try { (navigator as any).vibrate?.(ms); } catch (_e) { /* ignore */ } }
+
+  // ---------- 变更历史 ----------
+  const historyOpen = ref(false);
+  const fabOpen = ref(false);
+  const historyTitle = ref("");
+  const historyLogs = ref<Array<Record<string, any>>>([]);
+  const historyBusy = ref(false);
+  async function showHistory(r: Row) {
+    historyTitle.value = r.name;
+    historyOpen.value = true; historyBusy.value = true; historyLogs.value = [];
+    try {
+      const arr = await $fetch<Array<Record<string, any>>>(`/api/v1/audit?entityId=${r.id}&limit=100`);
+      historyLogs.value = (arr || []).slice().reverse();
+    } catch (_e) { /* ignore */ }
+    historyBusy.value = false;
+  }
+  function auditText(e: Record<string, any>): string {
+    switch (e.action) {
+      case "ledger.field_patch": return "修改字段：" + (Array.isArray(e.fields) ? e.fields.join("、") : "");
+      case "intake.create": return `入库（单 ${e.intakeId}）`;
+      case "intake.rollback": return `入库回滚（单 ${e.intakeId}）`;
+      case "trash2.mark": return "标记删除";
+      case "trash2.purge": return "回收站清除";
+      default: return String(e.action || "");
+    }
+  }
+  function fmtTs(ts: string): string {
+    const d = new Date(ts); if (isNaN(d.getTime())) return ts || "";
+    const z = (x: number) => String(x).padStart(2, "0");
+    return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`;
+  }
+
+  // ---------- 导出 CSV（当前筛选） ----------
+  function exportCSV() {
+    const list = sorted.value;
+    const cols = ["名称", "品牌", "尺寸", "规格", "颜色", "材质", "数量", "进价", "售价", "安全库存", "分类", "资产号"];
+    const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [cols.join(",")];
+    for (const r of list) {
+      lines.push([r.name, r.brand, r.size, r.spec, r.color, r.material, r.qty ?? 0, r.purchase ?? "", r.sell ?? "", r.safety ?? "", r.loc, r.raw.assetId ?? ""].map(esc).join(","));
+    }
+    const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `台账-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    buzz(); flash(`已导出 ${list.length} 行`);
+  }
+
+  // ---------- 复制一件 ----------
+  async function duplicateRow(r: Row) {
+    saving[r.id] = true;
+    try {
+      const created = await $fetch<Record<string, any>>(`/api/v1/entities/${r.id}/duplicate`, { method: "POST", body: {} });
+      const nid = created?.id;
+      const nm = r.name + "（副本）";
+      if (nid) await $fetch(`/api/v1/entities/${nid}`, { method: "PATCH", body: { name: nm } }).catch(() => {});
+      buzz(); flash("已复制：" + nm);
+      await load();
+    } catch (e) { flash("复制失败：" + ((e as Error)?.message ?? String(e))); }
+    finally { saving[r.id] = false; }
+  }
+
+  // ---------- 重复名称（合并） ----------
+  const dupGroups = computed(() => {
+    const m: Record<string, Row[]> = {};
+    for (const r of rows.value.filter(x => !isTrashed(x))) {
+      const k = r.name.trim(); if (!k) continue;
+      (m[k] = m[k] || []).push(r);
+    }
+    return Object.entries(m).filter(([, arr]) => arr.length > 1).map(([name, arr]) => ({ name, rows: arr }));
+  });
+  async function mergeDupSoft(g: { name: string; rows: Row[] }) {
+    const sortedRows = [...g.rows].sort((a, b) => String(b.updated || "").localeCompare(String(a.updated || "")));
+    const extras = sortedRows.slice(1);
+    for (const r of extras) trashed[r.id] = true;
+    try { await persistTrash(); buzz(20); flash(`「${g.name}」保留 1 条，标记删除 ${extras.length} 条`); }
+    catch (e) { flash("操作失败：" + ((e as Error)?.message ?? String(e))); }
+  }
 
   // ---------- 数据体检 ----------
   const qualityOpen = ref(false);
@@ -269,10 +354,14 @@
         method: "PUT",
         body: { name, entityTypeId: d.entityType?.id ?? TYPE_ID, fields, notes: "", quantity: Number(addForm.qty) || 0, parentId: addForm.loc, tagIds: tag ? [tag.id] : [] },
       });
-      flash("已新增：" + name);
-      addOpen.value = false;
-      Object.assign(addForm, { name: "", size: "", color: "", spec: "", material: "塑料", qty: 0, purchase: null, sell: null, loc: "", autoSplit: true });
-      Object.assign(addNew, { size: false, color: false, spec: false, material: false });
+      buzz(); flash("已新增：" + name);
+      if (addForm.keep) {
+        Object.assign(addForm, { name: "", qty: 0, purchase: null, sell: null });
+      } else {
+        addOpen.value = false;
+        Object.assign(addForm, { name: "", size: "", color: "", spec: "", material: "塑料", qty: 0, purchase: null, sell: null, loc: "", autoSplit: true, keep: false });
+        Object.assign(addNew, { size: false, color: false, spec: false, material: false });
+      }
       await load();
     } catch (e) {
       flash("新增失败：" + ((e as Error)?.message ?? String(e)));
@@ -852,15 +941,26 @@
   let touchStartX = 0;
   let touchStartY = 0;
   let touchMoved = false;
-  function onTS(e: TouchEvent, r: Row) { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; touchMoved = false; swipe[r.id] = 0; }
+  let lpTimer: number | undefined;
+  function onTS(e: TouchEvent, r: Row) {
+    touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; touchMoved = false; swipe[r.id] = 0;
+    if (lpTimer) window.clearTimeout(lpTimer);
+    lpTimer = window.setTimeout(() => {
+      lpTimer = undefined;
+      sel[r.id] = !sel[r.id];
+      if (sel[r.id]) { swipe[r.id] = 0; buzz(20); }
+    }, 550);
+  }
   function onTM(e: TouchEvent, r: Row) {
     const dx = e.touches[0].clientX - touchStartX;
     const dy = e.touches[0].clientY - touchStartY;
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { if (lpTimer) { window.clearTimeout(lpTimer); lpTimer = undefined; } }
     if (Math.abs(dy) > Math.abs(dx)) { swipe[r.id] = 0; return; }
     if (Math.abs(dx) > 8) touchMoved = true;
     swipe[r.id] = Math.max(-150, Math.min(0, dx));
   }
   function onTE(r: Row) {
+    if (lpTimer) { window.clearTimeout(lpTimer); lpTimer = undefined; }
     swipe[r.id] = (swipe[r.id] || 0) < -60 ? -150 : 0;
   }
   function closeSwipe(r: Row) { swipe[r.id] = 0; }
@@ -1124,6 +1224,7 @@
   });
   const saved = reactive<Record<string, number>>({});
   function markSaved(id: string) {
+    buzz(12);
     saved[id] = Date.now();
     window.setTimeout(() => { if (saved[id] && Date.now() - saved[id] >= 900) delete saved[id]; }, 1000);
   }
@@ -1320,6 +1421,7 @@
               <button :class="[btnGhost, 'active:scale-95']" @click="toggleNotify"><MdiBellRing class="h-4 w-4" /> {{ notifyOn ? "关闭提醒" : "补货提醒" }}</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="qualityOpen = true"><MdiClipboardCheckOutline class="h-4 w-4" /> 数据体检</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="importOpen = true"><MdiFileImportOutline class="h-4 w-4" /> 批量导入</button>
+              <button :class="[btnGhost, 'active:scale-95']" @click="exportCSV"><MdiDownload class="h-4 w-4" /> 导出CSV</button>
               <Transition name="pop">
                 <button v-if="undoLast" class="inline-flex items-center gap-1 rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-600 transition-all hover:bg-amber-500/20 active:scale-95" @click="undo"><MdiUndo class="h-4 w-4" /> 撤销</button>
               </Transition>
@@ -1338,6 +1440,7 @@
                 <button v-if="canInstall" class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="install"><MdiCellphoneArrowDown class="mr-1.5 inline h-4 w-4" />安装到桌面</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="qualityOpen = true"><MdiClipboardCheckOutline class="mr-1.5 inline h-4 w-4" />数据体检</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="importOpen = true"><MdiFileImportOutline class="mr-1.5 inline h-4 w-4" />批量导入</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportCSV"><MdiDownload class="mr-1.5 inline h-4 w-4" />导出CSV</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openScan"><MdiBarcodeScan class="mr-1.5 inline h-4 w-4" />扫码</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="load"><MdiRefresh class="mr-1.5 inline h-4 w-4" />刷新数据</button>
                 <button v-if="undoLast" class="block w-full rounded px-2.5 py-2.5 text-left text-amber-600 transition hover:bg-muted" @click="undo"><MdiUndo class="mr-1.5 inline h-4 w-4" />撤销上一步</button>
@@ -1592,7 +1695,7 @@
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-muted-foreground text-white transition active:scale-90" @click="pickPhoto(r); closeSwipe(r)"><MdiCamera class="h-5 w-5" /></button>
           </div>
           <div
-            :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']"
+            :class="[rowClass(r), isSaved(r) ? 'row-flash' : '', sel[r.id] ? 'ring-2 ring-inset ring-primary' : '']"
             :style="cardStyle(r)"
             class="relative bg-card p-3"
             style="touch-action: pan-y"
@@ -1633,14 +1736,14 @@
                 <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setSafety(r)" />
               </label>
             </div>
-            <div class="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <div class="flex items-center gap-2">
-                <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-3 text-xs font-medium transition active:scale-95" @click="showQR(r)"><MdiQrcode class="h-4 w-4" />二维码</button>
-                <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-3 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
-                  <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
-                </button>
-              </div>
-              <span>更新 {{ fmtDate(r.updated) }}</span>
+            <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showQR(r)"><MdiQrcode class="h-4 w-4" />二维码</button>
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" />复制</button>
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showHistory(r)"><MdiHistory class="h-4 w-4" />历史</button>
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
+                <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
+              </button>
+              <span class="ml-auto">更新 {{ fmtDate(r.updated) }}</span>
             </div>
           </div>
         </div>
@@ -1721,6 +1824,8 @@
               <td :class="[cellPad, 'text-center']">
                 <div class="flex items-center justify-center gap-1">
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="二维码标签" @click="showQR(r)"><MdiQrcode class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="复制一件" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="变更历史" @click="showHistory(r)"><MdiHistory class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
                     <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
                   </button>
@@ -1826,6 +1931,7 @@
               <input v-model="addForm.name" :class="[inputCls, 'mt-1 w-full']" placeholder="如：A4小象紫色横线（会自动拆分）或 小象" @input="onAddNameInput" />
             </label>
             <label class="flex items-center gap-2"><input v-model="addForm.autoSplit" type="checkbox" class="accent-primary" /> 从名称自动拆分 尺寸 / 颜色 / 规格</label>
+            <label class="flex items-center gap-2"><input v-model="addForm.keep" type="checkbox" class="accent-primary" /> 保存后继续新增（保留分类/规格）</label>
             <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <label class="block text-xs text-muted-foreground">尺寸
                 <select v-if="!addNew.size" :class="[inputCls, 'mt-1 w-full']" @change="onSel($event, 'size')">
@@ -1906,6 +2012,16 @@
             <button class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('dup')"><span>重复名称（涉及款数）</span><b class="tabular-nums" :class="qualityStats.dupCount ? 'text-red-600' : 'text-muted-foreground'">{{ qualityStats.dupCount }}</b></button>
           </div>
           <p v-if="qualityStats.dupNames.length" class="mt-2 truncate text-xs text-muted-foreground">重复示例：{{ qualityStats.dupNames.slice(0, 6).join("、") }}</p>
+          <div v-if="dupGroups.length" class="mt-4 border-t pt-3">
+            <div class="mb-1.5 text-sm font-medium text-red-600">重复名称（{{ dupGroups.length }} 组）· 可一键“保留最新、其余标记删除”</div>
+            <div class="max-h-52 space-y-1 overflow-auto">
+              <div v-for="g in dupGroups" :key="g.name" class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm">
+                <span class="min-w-0 flex-1 truncate">{{ g.name }}</span>
+                <span class="shrink-0 text-xs text-muted-foreground">{{ g.rows.length }} 条</span>
+                <button class="shrink-0 rounded-md border border-destructive/40 px-2 py-1 text-xs text-destructive transition hover:bg-destructive/10 active:scale-95" @click="mergeDupSoft(g)">合并</button>
+              </div>
+            </div>
+          </div>
           <button :class="[btnGhost, 'mt-3 w-full justify-center py-2.5 text-base']" @click="printFiltered">打印当前筛选二维码</button>
         </div>
       </div>
@@ -1950,6 +2066,38 @@
           <div class="mt-3 flex gap-2">
             <button :class="[btnGhost, 'flex-1 justify-center']" @click="qrOpen = false">关闭</button>
             <button :class="[btnPrimary, 'flex-1 justify-center']" @click="printQR(qrTitle, qrData)">打印</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 移动 FAB -->
+    <div v-if="isMobile" class="fixed bottom-5 right-4 z-40 flex flex-col items-end gap-2" style="padding-bottom: env(safe-area-inset-bottom)">
+      <Transition name="fold">
+        <div v-if="fabOpen" class="flex flex-col items-end gap-2">
+          <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; pickAI()"><MdiImageSearch class="h-4 w-4" /> 拍照新增</button>
+          <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; addItem()"><MdiPlus class="h-4 w-4" /> 手动新增</button>
+          <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; openScan()"><MdiBarcodeScan class="h-4 w-4" /> 扫码</button>
+        </div>
+      </Transition>
+      <button class="grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg transition active:scale-95" @click="fabOpen = !fabOpen"><MdiPlus class="h-6 w-6 transition-transform" :class="fabOpen ? 'rotate-45' : ''" /></button>
+    </div>
+
+    <!-- 变更历史 -->
+    <Transition name="fade">
+      <div v-if="historyOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="historyOpen = false">
+        <div class="max-h-[88vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="font-semibold">变更历史 · {{ historyTitle }}</span>
+            <button class="rounded-lg p-1 hover:bg-muted" @click="historyOpen = false"><MdiClose class="h-5 w-5" /></button>
+          </div>
+          <div v-if="historyBusy" class="py-6 text-center text-sm text-muted-foreground">加载中…</div>
+          <div v-else-if="!historyLogs.length" class="py-6 text-center text-sm text-muted-foreground">暂无记录</div>
+          <div v-else class="space-y-1.5">
+            <div v-for="(e, i) in historyLogs" :key="i" class="flex items-center gap-2 rounded-lg border px-2.5 py-2 text-sm">
+              <span class="text-xs text-muted-foreground tabular-nums">{{ fmtTs(e.ts) }}</span>
+              <span class="flex-1">{{ auditText(e) }}</span>
+            </div>
           </div>
         </div>
       </div>
