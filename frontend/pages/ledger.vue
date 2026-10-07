@@ -81,6 +81,15 @@
     { key: "front", name: "正面", required: true }, { key: "back", name: "反面" },
     { key: "detail", name: "细节", multiple: true }, { key: "package", name: "包装" },
   ]);
+  const orgCfg = ref<{ tagGroup: { name: string; options: string[] }; series: { enabled: boolean; stripParentheses: boolean }; groupDims: string[] }>({
+    tagGroup: { name: "品类", options: [] }, series: { enabled: true, stripParentheses: true }, groupDims: ["品牌", "尺寸", "规格", "系列"],
+  });
+  const DIM_KEYS: Record<string, string> = { 品牌: "brand", 尺寸: "size", 规格: "spec", 系列: "series", 颜色: "color", 材质: "material", 名称: "name", 分类: "loc" };
+  const groupDims = computed(() => {
+    const labels = orgCfg.value.groupDims?.length ? orgCfg.value.groupDims : ["品牌", "尺寸", "规格", "系列"];
+    const opts = labels.map(l => ({ label: l, key: DIM_KEYS[l] || "" })).filter(d => d.key);
+    return opts.length ? opts : [{ label: "品牌", key: "brand" }, { label: "系列", key: "series" }];
+  });
   function optionsFor(key: "size" | "color" | "spec" | "material", preset: string[]): string[] {
     const cfgMap: Record<string, string[]> = { size: uiOptions.value.sizes, color: uiOptions.value.colors, spec: uiOptions.value.specs, material: uiOptions.value.materials };
     const set = new Set([...(cfgMap[key] || []), ...preset]);
@@ -702,7 +711,7 @@
   const onlyLow = ref(false);
   const dataFilter = ref("");
   const showSummary = ref(false);
-  const summaryDim = ref<"brand" | "size" | "spec" | "series">("brand");
+  const summaryDim = ref<string>("brand");
   const preview = ref<string | null>(null);
   const undoLast = ref<{ label: string; items: UndoItem[] } | null>(null);
   const filterOpen = ref(false);
@@ -766,9 +775,12 @@
     } as Row;
   }
   function seriesKey(r: Row): string {
-    let x = String(r.name || "");
-    x = x.replace(/[（(][^）)]*[)）]/g, "").trim();
-    return x || String(r.name || "");
+    const s = orgCfg.value.series;
+    const nm = String(r.name || "");
+    if (s && s.enabled === false) return nm;
+    let x = nm;
+    if (!s || s.stripParentheses !== false) x = x.replace(/[（(][^）)]*[)）]/g, "").trim();
+    return x || nm;
   }
   const seriesOptions = computed(() => {
     const set = new Set<string>();
@@ -834,6 +846,15 @@
       const cfg = await $fetch<Record<string, any>>("/api/v1/gx/config");
       const slots = cfg?.media?.slots;
       if (Array.isArray(slots) && slots.length) mediaSlots.value = slots;
+      if (cfg?.organization) {
+        orgCfg.value = {
+          tagGroup: { name: cfg.organization.tagGroup?.name || "品类", options: cfg.organization.tagGroup?.options || [] },
+          series: { enabled: cfg.organization.series?.enabled !== false, stripParentheses: cfg.organization.series?.stripParentheses !== false },
+          groupDims: Array.isArray(cfg.organization.groupDims) && cfg.organization.groupDims.length ? cfg.organization.groupDims : orgCfg.value.groupDims,
+        };
+        const keys = groupDims.value.map(d => d.key);
+        if (!keys.includes(summaryDim.value)) summaryDim.value = keys[0] || "brand";
+      }
       const attrs: Array<Record<string, any>> = Array.isArray(cfg?.attributes) ? cfg.attributes : [];
       if (!attrs.length) return;
       const opts = (n: string): string[] => (attrs.find(a => a.name === n)?.options) || [];
@@ -2088,10 +2109,7 @@
           <div class="mb-3 flex items-center gap-2">
             <span class="font-semibold">汇总</span>
             <select v-model="summaryDim" :class="[inputCls, 'px-2 py-1']">
-              <option value="brand">按品牌</option>
-              <option value="size">按尺寸</option>
-              <option value="spec">按规格</option>
-              <option value="series">按系列</option>
+              <option v-for="d in groupDims" :key="d.key" :value="d.key">按{{ d.label }}</option>
             </select>
           </div>
           <div v-for="g in summaryGroups" :key="g.name" class="mb-1.5 flex items-center gap-3">
@@ -2110,7 +2128,7 @@
           <span class="flex items-center gap-1">进价<input v-model.number="batch.purchase" inputmode="decimal" type="number" :class="[inputCls, 'w-16']" /><button :class="[btnGhost, 'active:scale-95']" @click="batchPrice('purchase')">应用</button></span>
           <span class="flex items-center gap-1">售价<input v-model.number="batch.sell" inputmode="decimal" type="number" :class="[inputCls, 'w-16']" /><button :class="[btnGhost, 'active:scale-95']" @click="batchPrice('sell')">应用</button></span>
           <span class="flex items-center gap-1">安全库存<input v-model.number="batch.safety" inputmode="decimal" type="number" :class="[inputCls, 'w-16']" /><button :class="[btnGhost, 'active:scale-95']" @click="batchSafety">应用</button></span>
-          <span class="flex items-center gap-1">加标签<select v-model="batch.tag" :class="inputCls"><option value="">选择</option><option v-for="t in tags" :key="t.id" :value="t.id">{{ t.name }}</option></select><button :class="[btnGhost, 'active:scale-95']" @click="batchTag">应用</button></span>
+          <span class="flex items-center gap-1">加{{ orgCfg.tagGroup.name }}<select v-model="batch.tag" :class="inputCls"><option value="">选择</option><option v-for="t in tags" :key="t.id" :value="t.id">{{ t.name }}</option></select><button :class="[btnGhost, 'active:scale-95']" @click="batchTag">应用</button></span>
           <span class="flex items-center gap-1">分类<select v-model="batch.loc" :class="inputCls"><option value="">选择</option><option v-for="l in locations" :key="l.id" :value="l.id">{{ l.name }}</option></select><button :class="[btnGhost, 'active:scale-95']" @click="batchLoc">应用</button></span>
           <button :class="[btnGhost, 'active:scale-95']" @click="batchTrash"><MdiTrashCanOutline class="h-4 w-4" /> 标记删除</button>
           <button :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeSelected"><MdiDeleteForever class="h-4 w-4" /> 彻底删除</button>
