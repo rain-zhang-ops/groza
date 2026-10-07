@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
   import { toast } from "@/components/ui/sonner";
   import { useDialog } from "@/components/ui/dialog-provider";
   import { DialogID } from "@/components/ui/dialog-provider/utils";

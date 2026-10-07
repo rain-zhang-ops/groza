@@ -110,6 +110,24 @@ CREATE TABLE IF NOT EXISTS gx_config_history (
   created_at TEXT NOT NULL
 );
 
+-- ---------- 配置（按集合，v3 起）：group_id 为主键 ----------
+CREATE TABLE IF NOT EXISTS gx_group_config (
+  group_id   TEXT PRIMARY KEY,
+  version    INTEGER NOT NULL,
+  json       TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gx_group_config_history (
+  id         TEXT PRIMARY KEY,
+  group_id   TEXT NOT NULL,
+  version    INTEGER NOT NULL,
+  json       TEXT NOT NULL,
+  reason     TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_gxcfg_hist_grp ON gx_group_config_history(group_id, version DESC);
+
 -- ---------- 审计 / 幂等 / AI 缓存 ----------
 CREATE TABLE IF NOT EXISTS gx_audit_log (
   id           TEXT PRIMARY KEY,

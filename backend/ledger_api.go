@@ -256,7 +256,7 @@ func (a *app) handleLedgerFieldPatch() errchain.HandlerFunc {
 		if body.Serial != nil {
 			keys = append(keys, "库位")
 		}
-		auditLog("ledger.field_patch", map[string]any{"entityId": id.String(), "name": full.Name, "fields": keys})
+		auditLogG(ctx.GID.String(), "ledger.field_patch", map[string]any{"entityId": id.String(), "name": full.Name, "fields": keys})
 		return server.JSON(w, http.StatusOK, out)
 	}
 }
@@ -343,7 +343,8 @@ func (a *app) handleTrash2Put() errchain.HandlerFunc {
 		for k := range out.Entries {
 			markedIDs = append(markedIDs, k)
 		}
-		auditLog("trash2.mark", map[string]any{"marked": len(out.Entries), "ids": markedIDs})
+		ctx := services.NewContext(r.Context())
+		auditLogG(ctx.GID.String(), "trash2.mark", map[string]any{"marked": len(out.Entries), "ids": markedIDs})
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(b)
 		return nil
@@ -422,7 +423,7 @@ func (a *app) handleTrash2Purge() errchain.HandlerFunc {
 			_ = os.WriteFile(trashPathV2, b, 0o644)
 		}
 
-		auditLog("trash2.purge", map[string]any{
+		auditLogG(ctx.GID.String(), "trash2.purge", map[string]any{
 			"purged": len(purged), "errors": len(errs),
 			"maxAgeDays": body.MaxAgeDays, "explicit": len(body.IDs) > 0,
 		})

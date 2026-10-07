@@ -15,6 +15,7 @@ import (
 
 	"github.com/hay-kot/httpkit/errchain"
 	"github.com/hay-kot/httpkit/server"
+	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 )
 
 const auditPath = "/data/audit.log"
@@ -45,8 +46,33 @@ func auditLog(action string, fields map[string]any) {
 	_ = f.Close()
 }
 
+// auditLogG 带集合标记的审计（多集合隔离用）。
+func auditLogG(gid, action string, fields map[string]any) {
+	if fields == nil {
+		fields = map[string]any{}
+	}
+	if gid != "" {
+		fields["group"] = gid
+	}
+	auditLog(action, fields)
+}
+
+// auditGroupOK：记录带 group 时必须与当前集合一致；无 group（历史）放行。
+func auditGroupOK(line, gid string) bool {
+	var rec map[string]any
+	if json.Unmarshal([]byte(line), &rec) != nil {
+		return true
+	}
+	if s, ok := rec["group"].(string); ok && s != "" {
+		return s == gid
+	}
+	return true
+}
+
 func (a *app) handleAuditGet() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		ctx := services.NewContext(r.Context())
+		gid := ctx.GID.String()
 		limit := 200
 		if v := r.URL.Query().Get("limit"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 5000 {
@@ -59,6 +85,9 @@ func (a *app) handleAuditGet() errchain.HandlerFunc {
 			for _, ln := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
 				ln = strings.TrimSpace(ln)
 				if ln == "" || !json.Valid([]byte(ln)) {
+					continue
+				}
+				if !auditGroupOK(ln, gid) {
 					continue
 				}
 				if want != "" && !auditMatches(ln, want) {

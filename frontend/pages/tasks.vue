@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
   import MdiImageOffOutline from "~icons/mdi/image-off-outline";
   import MdiCurrencyUsdOff from "~icons/mdi/currency-usd-off";
   import MdiMapMarkerOff from "~icons/mdi/map-marker-off";

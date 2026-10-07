@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hay-kot/httpkit/errchain"
 	"github.com/hay-kot/httpkit/server"
+	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 )
 
 type gxDocLine struct {
@@ -25,8 +26,8 @@ type gxDocLine struct {
 	After    float64
 }
 
-// gxRecordDocument 幂等写入一张单据（已存在同 kind+code 则跳过）。best-effort。
-func gxRecordDocument(kind, code, party, note, status, ts string, lines []gxDocLine) {
+// gxRecordDocument 幂等写入一张单据（已存在同 group+kind+code 则跳过）。best-effort。
+func gxRecordDocument(gid, kind, code, party, note, status, ts string, lines []gxDocLine) {
 	db, err := gxOpen()
 	if err != nil {
 		return
@@ -38,7 +39,7 @@ func gxRecordDocument(kind, code, party, note, status, ts string, lines []gxDocL
 	}
 	defer func() { _ = tx.Rollback() }()
 	var n int
-	_ = tx.QueryRow(`SELECT COUNT(*) FROM gx_document WHERE kind=? AND code=?`, kind, code).Scan(&n)
+	_ = tx.QueryRow(`SELECT COUNT(*) FROM gx_document WHERE group_id=? AND kind=? AND code=?`, gid, kind, code).Scan(&n)
 	if n > 0 {
 		return
 	}
@@ -47,13 +48,13 @@ func gxRecordDocument(kind, code, party, note, status, ts string, lines []gxDocL
 	if status == "posted" {
 		posted = ts
 	}
-	if _, err = tx.Exec(`INSERT INTO gx_document (id,kind,code,party,note,status,created_at,posted_at,idem_key)
-		VALUES (?,?,?,?,?,?,?,?,?)`, docID, kind, code, party, note, status, ts, posted, kind+":"+code); err != nil {
+	if _, err = tx.Exec(`INSERT INTO gx_document (id,group_id,kind,code,party,note,status,created_at,posted_at,idem_key)
+		VALUES (?,?,?,?,?,?,?,?,?,?)`, docID, gid, kind, code, party, note, status, ts, posted, gid+":"+kind+":"+code); err != nil {
 		return
 	}
 	for _, l := range lines {
-		if _, err = tx.Exec(`INSERT INTO gx_document_line (id,document_id,item_id,qty,unit_cost,qty_before,qty_after)
-			VALUES (?,?,?,?,?,?,?)`, uuid.NewString(), docID, l.ItemID, l.Qty, l.UnitCost, l.Before, l.After); err != nil {
+		if _, err = tx.Exec(`INSERT INTO gx_document_line (id,group_id,document_id,item_id,qty,unit_cost,qty_before,qty_after)
+			VALUES (?,?,?,?,?,?,?,?)`, uuid.NewString(), gid, docID, l.ItemID, l.Qty, l.UnitCost, l.Before, l.After); err != nil {
 			return
 		}
 	}
@@ -61,14 +62,14 @@ func gxRecordDocument(kind, code, party, note, status, ts string, lines []gxDocL
 }
 
 // gxMarkRolledBack 将单据标记为已回滚。best-effort。
-func gxMarkRolledBack(kind, code string) {
+func gxMarkRolledBack(gid, kind, code string) {
 	db, err := gxOpen()
 	if err != nil {
 		return
 	}
 	defer db.Close()
-	_, _ = db.Exec(`UPDATE gx_document SET status='rolled_back', rolled_back_at=? WHERE kind=? AND code=?`,
-		time.Now().UTC().Format(time.RFC3339), kind, code)
+	_, _ = db.Exec(`UPDATE gx_document SET status='rolled_back', rolled_back_at=? WHERE group_id=? AND kind=? AND code=?`,
+		time.Now().UTC().Format(time.RFC3339), gid, kind, code)
 }
 
 func (a *app) handleGxDocuments() errchain.HandlerFunc {
@@ -84,10 +85,12 @@ func (a *app) handleGxDocuments() errchain.HandlerFunc {
 		}
 		defer db.Close()
 
-		q := `SELECT id,kind,code,party,note,status,created_at FROM gx_document`
-		args := []any{}
+		ctx := services.NewContext(r.Context())
+		gid := ctx.GID.String()
+		q := `SELECT id,kind,code,party,note,status,created_at FROM gx_document WHERE group_id=?`
+		args := []any{gid}
 		if kind != "" {
-			q += ` WHERE kind=?`
+			q += ` AND kind=?`
 			args = append(args, kind)
 		}
 		q += ` ORDER BY created_at DESC LIMIT ?`

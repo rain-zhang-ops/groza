@@ -58,6 +58,47 @@ def apply_schema(t):
         t.execute(f"DELETE FROM {tbl}")
     t.commit()
 
+# 需要按需补充的列（多集合 v3）
+NEEDED_COLUMNS = {
+    "gx_audit_log": ["group_id"],
+    "gx_document": ["group_id"],
+    "gx_document_line": ["group_id"],
+}
+
+def ensure_schema(t):
+    """仅建表/补列（不动数据），用于每次构建幂等确保。"""
+    sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema_v2.sql")
+    with open(sql_path, encoding="utf-8") as f:
+        t.executescript(f.read())
+    for tbl, cols in NEEDED_COLUMNS.items():
+        have = {r[1] for r in t.execute(f"PRAGMA table_info({tbl})")}
+        for col in cols:
+            if col not in have:
+                t.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT")
+    t.commit()
+
+def backfill_groups(t):
+    """把历史 gx 数据归属到当前唯一集合；并把 gx_config 迁到 gx_group_config。"""
+    try:
+        row = t.execute("SELECT id FROM groups LIMIT 1").fetchone()
+        gid = row[0] if row else None
+    except Exception:
+        gid = None
+    if not gid:
+        return
+    for tbl in ["gx_audit_log", "gx_document", "gx_document_line"]:
+        t.execute(f"UPDATE {tbl} SET group_id=? WHERE group_id IS NULL", (gid,))
+    n = t.execute("SELECT COUNT(*) FROM gx_group_config").fetchone()[0]
+    if n == 0:
+        r = t.execute("SELECT version,json,updated_at FROM gx_config WHERE id=1").fetchone()
+        if r:
+            t.execute("INSERT INTO gx_group_config (group_id,version,json,updated_at) VALUES (?,?,?,?)",
+                      (gid, r[0], r[1], r[2]))
+        for h in t.execute("SELECT version,json,reason,created_at FROM gx_config_history"):
+            t.execute("INSERT INTO gx_group_config_history (id,group_id,version,json,reason,created_at) VALUES (?,?,?,?,?,?)",
+                      (str(uuid.uuid4()), gid, h[0], h[1], h[2], h[3]))
+    t.commit()
+
 # ---------------------------------------------------------------- 属性配置
 def build_attr_defs(s, data_dir):
     """template_fields + ui-options -> defs/options/required/冗余列集合"""
@@ -355,9 +396,22 @@ def main():
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--in-place", dest="in_place", action="store_true",
                     help="就地附加迁移到源库（仅新增 gx_ 表）")
+    ap.add_argument("--ensure", action="store_true",
+                    help="仅建表/补列（不动数据），用于构建时幂等确保")
     a = ap.parse_args()
     if not a.db or not a.data:
         die("需要 --db 与 --data")
+
+    if getattr(a, "ensure", False):
+        t = sqlite3.connect(a.db, timeout=30)
+        try:
+            t.execute("PRAGMA busy_timeout=30000")
+            ensure_schema(t)
+            backfill_groups(t)
+            print("ensure 完成（建表/补列/回填集合）")
+        finally:
+            t.close()
+        return
 
     if a.verify:
         verify(a)
@@ -391,6 +445,7 @@ def main():
             t.execute("INSERT INTO gx_schema_version (version,applied_at) VALUES (2,?)",
                       (now_iso(),))
             t.commit()
+            backfill_groups(t)
             print(f"就地迁移完成 -> {a.db}")
             for k, v in rep.items():
                 print(f"  {k}: {v}")

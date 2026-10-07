@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/gx_documents.go backend/gx_perms.go backend/gx_adjust.go backend/trash.go frontend/pages/ledger.vue frontend/pages/tasks.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts patches/patch_upstream.py"
+CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/gx_documents.go backend/gx_perms.go backend/gx_adjust.go backend/trash.go frontend/pages/ledger.vue frontend/pages/tasks.vue frontend/pages/intake.vue frontend/pages/intake-records.vue frontend/pages/outbound.vue frontend/pages/outbound-records.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts frontend/plugins/gx-fetch.client.ts patches/patch_upstream.py"
 for f in $CUSTOM_FILES; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
@@ -142,6 +142,7 @@ cp "$HOME_DIR/frontend/pages/outbound-records.vue" "$FE_DIR/pages/outbound-recor
 cp "$HOME_DIR/frontend/pages/tasks.vue" "$FE_DIR/pages/tasks.vue"
 mkdir -p "$FE_DIR/composables"
 cp "$HOME_DIR/frontend/composables/useOfflineQueue.ts" "$FE_DIR/composables/useOfflineQueue.ts"
+cp "$HOME_DIR/frontend/plugins/gx-fetch.client.ts" "$FE_DIR/plugins/gx-fetch.client.ts"
 mkdir -p "$FE_DIR/pages/collection/index"
 cp "$HOME_DIR/frontend/pages/collection/ui-options.vue" "$FE_DIR/pages/collection/index/ui-options.vue"
 rm -f "$FE_DIR/pages/collection/fields.vue"
@@ -236,11 +237,11 @@ curl -sS -I -m 8 "$HEALTH_URL" | head -1
 
 # ---------------- gx_ 领域表（幂等：只建表，不动数据）----------------
 if [ -f "$HOME_DIR/ops/migrate/schema_v2.sql" ]; then
-  log "确保 gx_ 领域表就绪（仅 CREATE IF NOT EXISTS）"
+  log "确保 gx_ 领域表就绪（建表/补列/回填集合）"
   docker run --rm -v "$DATA_VOL":/data -v "$HOME_DIR/ops/migrate":/mig:ro \
     public.ecr.aws/docker/library/python:3-alpine \
-    python -c "import sqlite3;c=sqlite3.connect('/data/homebox.db');c.executescript(open('/mig/schema_v2.sql').read());c.commit()" \
-    || log "警告：gx_ 建表失败（可稍后运行 ops/migrate.sh）"
+    python /mig/migrate.py --ensure --db /data/homebox.db --data /data \
+    || log "警告：gx_ 建表/补列失败（可稍后运行 ops/migrate.sh）"
 fi
 
 # ---------------- 冒烟测试（可选）----------------

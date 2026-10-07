@@ -1,8 +1,10 @@
 package main
 
-// Groza 配置中心（sidecar）：读写 gx_config（库存架构配置：位置/属性/媒体/组织）。
-//   GET /api/v1/gx/config   返回当前配置（缺省返回内置默认模板）
-//   PUT /api/v1/gx/config   保存配置（版本 +1，并写入 gx_config_history）
+// Groza 配置中心（sidecar，按集合）：读写 gx_group_config（库存架构配置：位置/属性/媒体/组织/权限）。
+//   GET  /api/v1/gx/config            当前集合配置（缺省注入默认模板）
+//   PUT  /api/v1/gx/config            保存（版本 +1，写 gx_group_config_history）
+//   GET  /api/v1/gx/config/history    版本历史
+//   POST /api/v1/gx/config/restore    恢复到某版本（生成新版本，owner）
 // 仅访问 gx_ 表，不改动 Homebox 核心数据。
 
 import (
@@ -16,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hay-kot/httpkit/errchain"
 	"github.com/hay-kot/httpkit/server"
+	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 	"github.com/sysadminsmedia/homebox/backend/internal/sys/validate"
 
 	_ "modernc.org/sqlite"
@@ -23,8 +26,8 @@ import (
 
 const gxDBPath = "/data/homebox.db"
 
-// 默认模板 = 现状（迁移时也会写入，这里作为兜底）
-const defaultGxConfig = `{"version":1,"location":{"dim":"品牌","levels":["品牌"],"shelf":{"enabled":true,"name":"库位","pattern":"^[A-Z]-\\d{1,3}$","unique":false}},"attributes":[],"media":{"cover":"front","maxPerItem":8,"slots":[{"key":"front","name":"正面","required":true},{"key":"back","name":"反面"},{"key":"detail","name":"细节","multiple":true},{"key":"package","name":"包装"}]},"organization":{"tagGroup":{"name":"品类","options":[]},"series":{"enabled":true,"deriveFrom":["name"],"stripParentheses":true},"groupDims":["品牌","尺寸","规格","系列"]}}`
+// 默认模板（缺省注入；迁移时也会写入）
+const defaultGxConfig = `{"version":1,"location":{"dim":"品牌","levels":["品牌"],"shelf":{"enabled":true,"name":"库位","pattern":"^[A-Z]-\\d{1,3}$","unique":false}},"attributes":[],"media":{"cover":"front","maxPerItem":8,"slots":[{"key":"front","name":"正面","required":true},{"key":"back","name":"反面"},{"key":"detail","name":"细节","multiple":true},{"key":"package","name":"包装"}]},"organization":{"tagGroup":{"name":"品类","options":[]},"series":{"enabled":true,"deriveFrom":["name"],"stripParentheses":true},"groupDims":["品牌","尺寸","规格","系列"]},"permissions":{"editorCanIntake":true,"editorCanOutbound":true,"editorCanAdjust":true}}`
 
 func gxOpen() (*sql.DB, error) {
 	db, err := sql.Open("sqlite",
@@ -38,6 +41,8 @@ func gxOpen() (*sql.DB, error) {
 
 func (a *app) handleGxConfigGet() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		ctx := services.NewContext(r.Context())
+		gid := ctx.GID.String()
 		db, err := gxOpen()
 		if err != nil {
 			return err
@@ -45,9 +50,12 @@ func (a *app) handleGxConfigGet() errchain.HandlerFunc {
 		defer db.Close()
 
 		var js string
-		err = db.QueryRow(`SELECT json FROM gx_config WHERE id=1`).Scan(&js)
+		err = db.QueryRow(`SELECT json FROM gx_group_config WHERE group_id=?`, gid).Scan(&js)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if err == sql.ErrNoRows || js == "" {
+			now := time.Now().UTC().Format(time.RFC3339)
+			_, _ = db.Exec(`INSERT OR IGNORE INTO gx_group_config (group_id,version,json,updated_at) VALUES (?,1,?,?)`,
+				gid, defaultGxConfig, now)
 			_, _ = w.Write([]byte(defaultGxConfig))
 			return nil
 		}
@@ -64,6 +72,8 @@ func (a *app) handleGxConfigPut() errchain.HandlerFunc {
 		if err := a.requireOwner(r); err != nil {
 			return err
 		}
+		ctx := services.NewContext(r.Context())
+		gid := ctx.GID.String()
 		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
 			return err
@@ -88,25 +98,24 @@ func (a *app) handleGxConfigPut() errchain.HandlerFunc {
 		defer func() { _ = tx.Rollback() }()
 
 		var ver int
-		_ = tx.QueryRow(`SELECT version FROM gx_config WHERE id=1`).Scan(&ver)
+		_ = tx.QueryRow(`SELECT version FROM gx_group_config WHERE group_id=?`, gid).Scan(&ver)
 		ver++
-		// 归一化：JSON 内嵌 version 以列为准
 		var doc map[string]json.RawMessage
 		_ = json.Unmarshal(body, &doc)
-		if v, err := json.Marshal(ver); err == nil {
+		if v, e := json.Marshal(ver); e == nil {
 			doc["version"] = v
 		}
-		if norm, err := json.Marshal(doc); err == nil {
+		if norm, e := json.Marshal(doc); e == nil {
 			body = norm
 		}
 		now := time.Now().UTC().Format(time.RFC3339)
-		if _, err = tx.Exec(`INSERT INTO gx_config (id,version,json,updated_at) VALUES (1,?,?,?)
-			ON CONFLICT(id) DO UPDATE SET version=excluded.version, json=excluded.json, updated_at=excluded.updated_at`,
-			ver, string(body), now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO gx_group_config (group_id,version,json,updated_at) VALUES (?,?,?,?)
+			ON CONFLICT(group_id) DO UPDATE SET version=excluded.version, json=excluded.json, updated_at=excluded.updated_at`,
+			gid, ver, string(body), now); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`INSERT INTO gx_config_history (id,version,json,reason,created_at)
-			VALUES (?,?,?,?,?)`, uuid.NewString(), ver, string(body), "api.put", now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO gx_group_config_history (id,group_id,version,json,reason,created_at)
+			VALUES (?,?,?,?,?,?)`, uuid.NewString(), gid, ver, string(body), "api.put", now); err != nil {
 			return err
 		}
 		if err = tx.Commit(); err != nil {
@@ -118,12 +127,13 @@ func (a *app) handleGxConfigPut() errchain.HandlerFunc {
 
 func (a *app) handleGxConfigHistory() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		ctx := services.NewContext(r.Context())
 		db, err := gxOpen()
 		if err != nil {
 			return err
 		}
 		defer db.Close()
-		rows, err := db.Query(`SELECT version, COALESCE(reason,''), created_at FROM gx_config_history ORDER BY version DESC LIMIT 50`)
+		rows, err := db.Query(`SELECT version, COALESCE(reason,''), created_at FROM gx_group_config_history WHERE group_id=? ORDER BY version DESC LIMIT 50`, ctx.GID.String())
 		if err != nil {
 			return fmt.Errorf("读取配置历史失败: %w", err)
 		}
@@ -150,6 +160,8 @@ func (a *app) handleGxConfigRestore() errchain.HandlerFunc {
 		if err := a.requireOwner(r); err != nil {
 			return err
 		}
+		ctx := services.NewContext(r.Context())
+		gid := ctx.GID.String()
 		var body struct {
 			Version int `json:"version"`
 		}
@@ -168,11 +180,11 @@ func (a *app) handleGxConfigRestore() errchain.HandlerFunc {
 		defer func() { _ = tx.Rollback() }()
 
 		var prev string
-		if err := tx.QueryRow(`SELECT json FROM gx_config_history WHERE version=?`, body.Version).Scan(&prev); err != nil {
+		if err := tx.QueryRow(`SELECT json FROM gx_group_config_history WHERE group_id=? AND version=?`, gid, body.Version).Scan(&prev); err != nil {
 			return validate.NewRequestError(fmt.Errorf("版本不存在"), http.StatusNotFound)
 		}
 		var cur int
-		_ = tx.QueryRow(`SELECT version FROM gx_config WHERE id=1`).Scan(&cur)
+		_ = tx.QueryRow(`SELECT version FROM gx_group_config WHERE group_id=?`, gid).Scan(&cur)
 		newVer := cur + 1
 		var doc map[string]json.RawMessage
 		_ = json.Unmarshal([]byte(prev), &doc)
@@ -181,13 +193,13 @@ func (a *app) handleGxConfigRestore() errchain.HandlerFunc {
 		}
 		norm, _ := json.Marshal(doc)
 		now := time.Now().UTC().Format(time.RFC3339)
-		if _, err = tx.Exec(`INSERT INTO gx_config (id,version,json,updated_at) VALUES (1,?,?,?)
-			ON CONFLICT(id) DO UPDATE SET version=excluded.version, json=excluded.json, updated_at=excluded.updated_at`,
-			newVer, string(norm), now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO gx_group_config (group_id,version,json,updated_at) VALUES (?,?,?,?)
+			ON CONFLICT(group_id) DO UPDATE SET version=excluded.version, json=excluded.json, updated_at=excluded.updated_at`,
+			gid, newVer, string(norm), now); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`INSERT INTO gx_config_history (id,version,json,reason,created_at) VALUES (?,?,?,?,?)`,
-			uuid.NewString(), newVer, string(norm), fmt.Sprintf("restore v%d", body.Version), now); err != nil {
+		if _, err = tx.Exec(`INSERT INTO gx_group_config_history (id,group_id,version,json,reason,created_at) VALUES (?,?,?,?,?,?)`,
+			uuid.NewString(), gid, newVer, string(norm), fmt.Sprintf("restore v%d", body.Version), now); err != nil {
 			return err
 		}
 		if err = tx.Commit(); err != nil {

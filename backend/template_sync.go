@@ -97,7 +97,7 @@ func (a *app) handleLedgerSyncFields() errchain.HandlerFunc {
 			}
 		}
 
-		auditLog("ledger.sync_fields", map[string]any{"updated": updated, "fields": len(order)})
+		auditLogG(ctx.GID.String(), "ledger.sync_fields", map[string]any{"updated": updated, "fields": len(order)})
 		return server.JSON(w, http.StatusOK, map[string]any{"updated": updated, "fields": order})
 	}
 }
