@@ -199,6 +199,18 @@ func (a *app) handleLedgerFieldPatch() errchain.HandlerFunc {
 						changed = true
 					}
 					nf.NumberValue = n
+				case "boolean":
+					b := false
+					switch t := v.(type) {
+					case bool:
+						b = t
+					case string:
+						b = t == "true" || t == "1"
+					}
+					if b != f.BooleanValue {
+						changed = true
+					}
+					nf.BooleanValue = b
 				}
 			}
 			fields = append(fields, nf)

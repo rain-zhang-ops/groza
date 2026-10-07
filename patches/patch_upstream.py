@@ -327,6 +327,7 @@ def main():
         add = anchor + ("\n\n"
                         "\t\tr.Get(\"/ledger\", chain.ToHandlerFunc(a.handleLedgerAggregate(), userMW...))\n"
                         "\t\tr.Patch(\"/ledger/{id}\", chain.ToHandlerFunc(a.handleLedgerFieldPatch(), userMW...))\n"
+                        "\t\tr.Post(\"/ledger/sync-fields\", chain.ToHandlerFunc(a.handleLedgerSyncFields(), userMW...))\n"
                         "\t\tr.Get(\"/trash2\", chain.ToHandlerFunc(a.handleTrash2Get(), userMW...))\n"
                         "\t\tr.Put(\"/trash2\", chain.ToHandlerFunc(a.handleTrash2Put(), userMW...))\n"
                         "\t\tr.Post(\"/trash2/purge\", chain.ToHandlerFunc(a.handleTrash2Purge(), userMW...))\n"
@@ -565,6 +566,10 @@ def main():
           </div>
         </div>'''
     rep(f"{fe}/pages/template/[id].vue", id_old, id_new, "tpl-edit-fields-mobile")
+    rep(f"{fe}/pages/template/[id].vue",
+        '    toast.success(t("components.template.toast.updated"));\n    template.value = data;',
+        '    toast.success(t("components.template.toast.updated"));\n    try {\n      const _sr = await $fetch<Record<string, any>>("/api/v1/ledger/sync-fields", { method: "POST", body: {} });\n      if (_sr && typeof _sr.updated === "number") toast.success("已应用到 " + _sr.updated + " 件物品");\n    } catch (_e) { /* ignore */ }\n    template.value = data;',
+        "tpl-sync-on-save")
 
     if FAILS:
         print(f"\n共 {len(FAILS)} 个补丁失败: {', '.join(FAILS)}", file=sys.stderr)

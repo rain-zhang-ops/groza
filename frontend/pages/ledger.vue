@@ -28,6 +28,7 @@
   import MdiImage from "~icons/mdi/image";
   import MdiFormatSize from "~icons/mdi/format-size";
   import MdiContentPaste from "~icons/mdi/content-paste";
+  import MdiFormTextbox from "~icons/mdi/form-textbox";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -147,10 +148,18 @@
   function exportCSV() {
     const list = sorted.value;
     const cols = ["名称", "品牌", "尺寸", "规格", "颜色", "材质", "数量", "进价", "售价", "安全库存", "分类", "库位", "资产号"];
+    const KNOWN = new Set(["品牌", "尺寸", "规格", "颜色", "材质", "进价", "售价", "安全库存"]);
+    const extraSet = new Set<string>();
+    for (const r of list) for (const f of ((r.raw.fields as Array<Record<string, any>>) || [])) if (!KNOWN.has(f.name)) extraSet.add(f.name);
+    const extras = [...extraSet].sort();
+    cols.push(...extras);
     const esc = (v: any) => `"${String(v ?? "").replace(/"/g, '""')}"`;
     const lines = [cols.join(",")];
     for (const r of list) {
-      lines.push([r.name, r.brand, r.size, r.spec, r.color, r.material, r.qty ?? 0, r.purchase ?? "", r.sell ?? "", r.safety ?? "", r.loc, r.serial ?? "", r.raw.assetId ?? ""].map(esc).join(","));
+      const fm = fieldMap(r.raw);
+      const base: any[] = [r.name, r.brand, r.size, r.spec, r.color, r.material, r.qty ?? 0, r.purchase ?? "", r.sell ?? "", r.safety ?? "", r.loc, r.serial ?? "", r.raw.assetId ?? ""];
+      for (const nm of extras) base.push(fm[nm] ?? "");
+      lines.push(base.map(esc).join(","));
     }
     const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
@@ -1145,19 +1154,42 @@
   }
 
   // ---------- 字段写入 ----------
-  function buildFields(row: Row, changes: Record<string, number | string>): Array<Record<string, any>> {
+  function buildFields(row: Row, changes: Record<string, any>): Array<Record<string, any>> {
     return (row.raw.fields as Array<Record<string, any>>).map(f => {
       const x: Record<string, any> = { id: f.id, name: f.name, type: f.type };
       if (f.type === "text") x.textValue = f.textValue ?? "";
+      else if (f.type === "boolean") x.booleanValue = !!f.booleanValue;
       else x.numberValue = f.numberValue ?? 0;
       if (f.name in changes) {
         if (f.type === "text") x.textValue = String(changes[f.name]);
+        else if (f.type === "boolean") x.booleanValue = !!changes[f.name];
         else x.numberValue = Number(changes[f.name]);
       }
       return x;
     });
   }
-  async function putFields(row: Row, changes: Record<string, number | string>): Promise<boolean> {
+  const fieldsOpen = ref(false);
+  const fieldsItem = ref<Row | null>(null);
+  const fieldsDraft = ref<Array<Record<string, any>>>([]);
+  const fieldsBusy = ref(false);
+  function openFields(r: Row) {
+    fieldsItem.value = r;
+    fieldsDraft.value = ((r.raw.fields as Array<Record<string, any>>) || []).map(f => ({
+      id: f.id, name: f.name, type: f.type || "text",
+      value: f.type === "text" ? (f.textValue ?? "") : f.type === "boolean" ? !!f.booleanValue : (f.numberValue ?? 0),
+    }));
+    fieldsOpen.value = true;
+  }
+  async function saveFields() {
+    const r = fieldsItem.value; if (!r) return;
+    const changes: Record<string, any> = {};
+    for (const f of fieldsDraft.value) changes[f.name] = f.value;
+    fieldsBusy.value = true;
+    const ok = await putFields(r, changes);
+    fieldsBusy.value = false;
+    if (ok) { fieldsOpen.value = false; buzz(); flash("字段已保存"); }
+  }
+  async function putFields(row: Row, changes: Record<string, any>): Promise<boolean> {
     const fields = buildFields(row, changes);
     saving[row.id] = true;
     try {
@@ -2008,6 +2040,7 @@
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" />复制</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showHistory(r)"><MdiHistory class="h-4 w-4" />历史</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" />图片</button>
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="openFields(r)"><MdiFormTextbox class="h-4 w-4" />字段</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
                 <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
               </button>
@@ -2100,6 +2133,7 @@
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="复制一件" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="变更历史" @click="showHistory(r)"><MdiHistory class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="图片（多图）" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="自定义字段" @click="openFields(r)"><MdiFormTextbox class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
                     <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
                   </button>
@@ -2417,6 +2451,32 @@
             <button class="grid h-28 place-items-center rounded-lg border border-dashed text-3xl text-muted-foreground transition hover:bg-muted" @click="pickGallery">＋</button>
           </div>
           <p class="mt-2 text-xs text-muted-foreground">可传多张；第一张默认封面，点“设封面”可更换。</p>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 自定义字段 -->
+    <Transition name="fade">
+      <div v-if="fieldsOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="fieldsOpen = false">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="mb-3 flex items-center justify-between">
+            <span class="font-semibold">自定义字段 · {{ fieldsItem?.name }}</span>
+            <button class="rounded-lg p-1 hover:bg-muted" @click="fieldsOpen = false"><MdiClose class="h-5 w-5" /></button>
+          </div>
+          <div class="space-y-2">
+            <label v-for="(f, i) in fieldsDraft" :key="i" class="flex items-center gap-2 text-sm">
+              <span class="w-20 shrink-0 truncate text-muted-foreground">{{ f.name }}</span>
+              <input v-if="f.type === 'text'" v-model="f.value" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" />
+              <input v-else-if="f.type === 'number'" v-model.number="f.value" type="number" inputmode="decimal" :class="[inputCls, 'h-10 w-28 text-base']" />
+              <input v-else-if="f.type === 'boolean'" v-model="f.value" type="checkbox" class="h-5 w-5 accent-primary" />
+              <span v-else class="text-xs text-muted-foreground">{{ f.value }}</span>
+            </label>
+            <div v-if="!fieldsDraft.length" class="py-4 text-center text-sm text-muted-foreground">该物品暂无自定义字段（可在 集合→字段 添加）</div>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button :class="[btnGhost, 'flex-1 justify-center py-2.5 text-base']" @click="fieldsOpen = false">取消</button>
+            <button :class="[btnPrimary, 'flex-1 justify-center py-2.5 text-base']" :disabled="fieldsBusy" @click="saveFields">{{ fieldsBusy ? "保存中…" : "保存" }}</button>
+          </div>
         </div>
       </div>
     </Transition>
