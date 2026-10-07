@@ -21,6 +21,7 @@
     color: string;
     qty: number;
     assetId?: string;
+    serial?: string;
     thumb: string | null;
   };
   type OutboundItem = { entityId: string; name?: string; count: number };
@@ -35,6 +36,9 @@
   const rows = ref<Row[]>([]);
   const outbounds = ref<Outbound[]>([]);
   const q = ref("");
+  const hideSoldOut = ref(true);
+  const fBrand = ref("");
+  const sortMode = ref<"name" | "qtyDesc" | "qtyAsc">("name");
   const loading = ref(true);
   const err = ref("");
   const msg = ref("");
@@ -71,7 +75,7 @@
         id: e.id, name: e.name,
         brand: fieldOf(e, "品牌") || e.parent || "",
         size: fieldOf(e, "尺寸") || "", spec: fieldOf(e, "规格") || "", color: fieldOf(e, "颜色") || "",
-        qty: e.quantity ?? 0, assetId: e.assetId || "", thumb: e.thumb || null,
+        qty: e.quantity ?? 0, assetId: e.assetId || "", serial: e.serial || "", thumb: e.thumb || null,
       }));
       outbounds.value = (ob || []) as Outbound[];
     } catch (e) {
@@ -90,17 +94,43 @@
     closeScan();
   });
 
-  const filtered = computed(() => {
-    const kw = q.value.trim().toLowerCase();
-    const list = rows.value.filter(r =>
-      !kw ||
-      r.name.toLowerCase().includes(kw) ||
-      r.brand.toLowerCase().includes(kw) ||
-      r.size.toLowerCase().includes(kw) ||
-      r.color.toLowerCase().includes(kw) ||
-      String(r.assetId || "").toLowerCase().includes(kw));
-    return list.slice(0, kw ? 200 : 60);
+  const brandList = computed(() => {
+    const s = new Set<string>();
+    for (const r of rows.value) if (r.brand) s.add(r.brand);
+    return [...s].sort((a, b) => a.localeCompare(b, "zh"));
   });
+  const recentOut = computed(() => {
+    const seen = new Set<string>(); const out: Row[] = [];
+    for (const t of outbounds.value) {
+      for (const it of (t.items || [])) {
+        if (seen.has(it.entityId)) continue;
+        seen.add(it.entityId);
+        const r = rows.value.find(x => x.id === it.entityId);
+        if (r) out.push(r);
+        if (out.length >= 8) return out;
+      }
+    }
+    return out;
+  });
+  const hiddenSoldOut = computed(() =>
+    hideSoldOut.value ? rows.value.filter(r => r.qty <= 0 && (!fBrand.value || r.brand === fBrand.value)).length : 0);
+  const matched = computed(() => {
+    const kw = q.value.trim().toLowerCase();
+    let list = rows.value.filter(r =>
+      (!hideSoldOut.value || r.qty > 0) &&
+      (!fBrand.value || r.brand === fBrand.value) &&
+      (!kw ||
+        r.name.toLowerCase().includes(kw) ||
+        r.brand.toLowerCase().includes(kw) ||
+        r.size.toLowerCase().includes(kw) ||
+        r.color.toLowerCase().includes(kw) ||
+        String(r.assetId || "").toLowerCase().includes(kw) ||
+        String(r.serial || "").toLowerCase().includes(kw)));
+    if (sortMode.value === "qtyDesc") list = [...list].sort((a, b) => b.qty - a.qty);
+    else if (sortMode.value === "qtyAsc") list = [...list].sort((a, b) => a.qty - b.qty);
+    return list;
+  });
+  const filtered = computed(() => matched.value.slice(0, q.value.trim() ? 200 : 60));
   const cartList = computed(() => Object.values(items));
   const cartCount = computed(() => cartList.value.reduce((s, l) => s + l.count, 0));
   function stock(r: Row): number { return rows.value.find(x => x.id === r.id)?.qty ?? r.qty; }
@@ -284,8 +314,18 @@
         <!-- 搜索 + 扫码 -->
         <section class="mb-3 rounded-xl border bg-card p-2 shadow-sm">
           <div class="flex items-center gap-2">
-            <input v-model="q" :class="[inputCls, 'h-12 min-w-0 flex-1 text-base']" placeholder="搜索商品（名称/品牌/编号）" />
+            <input v-model="q" :class="[inputCls, 'h-12 min-w-0 flex-1 text-base']" placeholder="搜索（名称/品牌/编号/库位）" />
             <button class="grid h-12 w-12 shrink-0 place-items-center rounded-xl border bg-background transition active:scale-95" title="扫码加入" @click="openScan"><MdiBarcodeScan class="h-6 w-6" /></button>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <select v-model="fBrand" :class="[inputCls, 'h-10 text-base']"><option value="">全部品牌</option><option v-for="b in brandList" :key="b" :value="b">{{ b }}</option></select>
+            <select v-model="sortMode" :class="[inputCls, 'h-10 text-base']"><option value="name">按名称</option><option value="qtyDesc">库存多→少</option><option value="qtyAsc">库存少→多</option></select>
+            <label class="inline-flex items-center gap-1 text-xs text-muted-foreground"><input v-model="hideSoldOut" type="checkbox" class="accent-primary" /> 隐藏无库存</label>
+            <span class="ml-auto text-xs text-muted-foreground">{{ matched.length }} 款<template v-if="hiddenSoldOut"> · 隐藏 {{ hiddenSoldOut }}</template><template v-if="matched.length > filtered.length">（显示 {{ filtered.length }}）</template></span>
+          </div>
+          <div v-if="!q && recentOut.length" class="mt-2 flex flex-wrap items-center gap-1 text-xs">
+            <span class="text-muted-foreground">最近出库</span>
+            <button v-for="r in recentOut" :key="r.id" class="rounded-full border px-2 py-0.5 transition hover:bg-muted" @click="inc(r)">{{ r.name }}</button>
           </div>
           <div class="mt-2 max-h-[46vh] space-y-1 overflow-auto">
             <div
@@ -308,7 +348,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="!filtered.length" class="py-6 text-center text-sm text-muted-foreground">没有匹配的商品</div>
+            <div v-if="!filtered.length" class="py-6 text-center text-sm text-muted-foreground">没有匹配的商品<template v-if="hideSoldOut && hiddenSoldOut">（已隐藏 {{ hiddenSoldOut }} 个无库存）</template></div>
           </div>
         </section>
 
