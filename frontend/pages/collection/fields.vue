@@ -69,6 +69,16 @@
   const route = useRoute();
   const templateId = computed(() => (route.params.id as string) || "");
 
+  const QUICK: Array<{ name: string; type: string }> = [
+    { name: "品牌", type: "text" }, { name: "尺寸", type: "text" }, { name: "规格", type: "text" },
+    { name: "颜色", type: "text" }, { name: "材质", type: "text" }, { name: "进价", type: "number" },
+    { name: "售价", type: "number" }, { name: "页数", type: "number" }, { name: "纸张", type: "text" },
+    { name: "安全库存", type: "number" },
+  ];
+  const quickPending = computed(() => QUICK.filter(q => !form.fields.some(f => f.name.trim() === q.name)));
+  function quickAdd(q: { name: string; type: string }) {
+    form.fields.push({ id: NIL, name: q.name, type: q.type, value: q.type === "number" ? 0 : "" });
+  }
   function addField() { form.fields.push({ id: NIL, name: "", type: "text", value: "" }); }
   function delField(i: number) { form.fields.splice(i, 1); }
   function moveField(i: number, d: number) {
@@ -138,6 +148,17 @@
       </div>
 
       <template v-else>
+        <details class="mb-3 rounded-xl border bg-card p-3 text-sm" open>
+          <summary class="cursor-pointer font-medium">说明（点开/收起）</summary>
+          <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>这些字段会出现在<b>每个物品</b>上，并在「物品台账」中<b>显示为列</b>（可编辑 / 筛选 / 导出）。</li>
+            <li>类型：<b>文本</b> 如 品牌/规格；<b>数字</b> 如 进价/页数（可参与货值、排序）；<b>开关</b> 是/否。</li>
+            <li>保存后会<b>自动应用到所有物品</b>（只补齐缺失字段与类型，<b>不会删除</b>已有数据）。</li>
+            <li>“必填”在 <b>集合 → 选项配置</b> 里设置，台账会标 <span class="text-destructive">*</span> 并做校验。</li>
+            <li>列表里的 <b>↑ ↓</b> 调整的是台账<b>列顺序</b>。</li>
+          </ul>
+        </details>
+
         <section class="mb-3 rounded-xl border bg-card p-3 shadow-sm">
           <label v-if="templates.length > 1" class="mb-2 block text-xs text-muted-foreground">模板
             <select v-model="tplId" :class="[inputCls, 'mt-1 w-full text-base']" @change="loadTemplate(tplId)">
@@ -156,6 +177,10 @@
           <div class="mb-2 flex items-center justify-between">
             <span class="text-sm font-medium">字段（{{ form.fields.length }}）</span>
             <Button size="sm" variant="outline" @click="addField"><MdiPlus class="mr-1 size-4" /> 添加字段</Button>
+          </div>
+          <div v-if="quickPending.length" class="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>常用：</span>
+            <button v-for="q in quickPending" :key="q.name" class="rounded-full border px-2 py-0.5 transition hover:bg-muted active:scale-95" @click="quickAdd(q)">＋ {{ q.name }}</button>
           </div>
           <div class="flex flex-col gap-2">
             <div v-for="(f, i) in form.fields" :key="i" class="rounded-xl border p-2">
@@ -177,7 +202,12 @@
                 </div>
               </div>
             </div>
-            <div v-if="!form.fields.length" class="py-6 text-center text-sm text-muted-foreground">还没有字段，点右上「添加字段」</div>
+            <div v-if="!form.fields.length" class="rounded-xl border border-dashed p-4 text-center">
+              <p class="text-sm text-muted-foreground">还没有字段。点右上「添加字段」，或一键添加常用字段：</p>
+              <div class="mt-2 flex flex-wrap justify-center gap-2">
+                <button v-for="q in quickPending" :key="q.name" class="rounded-full border px-3 py-1.5 text-sm transition hover:bg-muted active:scale-95" @click="quickAdd(q)">＋ {{ q.name }}</button>
+              </div>
+            </div>
           </div>
         </section>
       </template>
