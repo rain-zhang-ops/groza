@@ -396,11 +396,11 @@ def main():
         "collection-fields-icon")
     rep(coll,
         '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
-        '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n    {\n      id: "fields",\n      label: "字段",\n      to: "/templates",\n      icon: MdiFormTextbox,\n    },',
+        '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n    {\n      id: "fields",\n      label: "配置",\n      to: "/templates",\n      icon: MdiFormTextbox,\n    },',
         "collection-fields-tab")
     rep(coll,
         '      id: "fields",\n      label: "字段",\n      to: "/templates",',
-        '      id: "fields",\n      label: "字段",\n      to: "/collection/fields",',
+        '      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
         "collection-fields-tab-target")
     dv_t = open(dv, encoding="utf-8").read()
     tpl_block = ('    {\n'

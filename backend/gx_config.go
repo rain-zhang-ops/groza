@@ -87,6 +87,15 @@ func (a *app) handleGxConfigPut() errchain.HandlerFunc {
 		var ver int
 		_ = tx.QueryRow(`SELECT version FROM gx_config WHERE id=1`).Scan(&ver)
 		ver++
+		// 归一化：JSON 内嵌 version 以列为准
+		var doc map[string]json.RawMessage
+		_ = json.Unmarshal(body, &doc)
+		if v, err := json.Marshal(ver); err == nil {
+			doc["version"] = v
+		}
+		if norm, err := json.Marshal(doc); err == nil {
+			body = norm
+		}
 		now := time.Now().UTC().Format(time.RFC3339)
 		if _, err = tx.Exec(`INSERT INTO gx_config (id,version,json,updated_at) VALUES (1,?,?,?)
 			ON CONFLICT(id) DO UPDATE SET version=excluded.version, json=excluded.json, updated_at=excluded.updated_at`,

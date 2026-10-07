@@ -824,6 +824,23 @@
     }));
   }
 
+  // 配置驱动（gx/config）：必填与下拉选项按属性配置派生（名称匹配），失败回退原值
+  async function applyGxConfig(): Promise<void> {
+    try {
+      const cfg = await $fetch<Record<string, any>>("/api/v1/gx/config");
+      const attrs: Array<Record<string, any>> = Array.isArray(cfg?.attributes) ? cfg.attributes : [];
+      if (!attrs.length) return;
+      const opts = (n: string): string[] => (attrs.find(a => a.name === n)?.options) || [];
+      uiOptions.value = {
+        sizes: opts("尺寸").length ? opts("尺寸") : uiOptions.value.sizes,
+        specs: opts("规格").length ? opts("规格") : uiOptions.value.specs,
+        colors: opts("颜色").length ? opts("颜色") : uiOptions.value.colors,
+        materials: opts("材质").length ? opts("材质") : uiOptions.value.materials,
+        required: attrs.filter(a => a.required).map(a => a.name),
+      };
+    } catch (_e) { /* ignore */ }
+  }
+
   async function load() {
     loading.value = true;
     err.value = "";
@@ -834,6 +851,7 @@
         try { localStorage.setItem(CACHE_KEY, JSON.stringify(agg)); } catch (_e) { /* ignore */ }
         offlineReadonly.value = false;
         applyAgg(agg);
+        void applyGxConfig();
         loading.value = false;
         return;
       }
