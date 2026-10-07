@@ -559,6 +559,25 @@ def main():
         'navigateTo(redirectTo.value || "/tasks");',
         "landing-redirect-to-tasks")
 
+    # ---- 9b. 移动端底部 Dock（lg 以下显示；抽屉仍保留）----
+    rep(dv,
+        '<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center">',
+        '<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center pb-16 lg:pb-0">',
+        "mobile-dock-padding")
+    dock_old = '        </div>\n      </SidebarInset>'
+    dock_new = (
+        '        </div>\n'
+        '        <nav class="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t bg-card/95 backdrop-blur lg:hidden" style="padding-bottom: env(safe-area-inset-bottom)">\n'
+        '          <NuxtLink to="/tasks" class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" :class="route.path === \'/tasks\' ? \'text-primary\' : \'text-muted-foreground\'"><MdiClipboardCheckOutline class="h-5 w-5" /><span>待办</span></NuxtLink>\n'
+        '          <NuxtLink to="/ledger" class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" :class="route.path === \'/ledger\' ? \'text-primary\' : \'text-muted-foreground\'"><MdiMagnify class="h-5 w-5" /><span>物品</span></NuxtLink>\n'
+        '          <NuxtLink to="/intake" class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" :class="[\'/intake\', \'/outbound\', \'/documents\'].includes(route.path) ? \'text-primary\' : \'text-muted-foreground\'"><MdiTruckDeliveryOutline class="h-5 w-5" /><span>进出</span></NuxtLink>\n'
+        '          <NuxtLink to="/collection/fields" class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" :class="(route.path.startsWith(\'/collection\') || route.path === \'/tags\') ? \'text-primary\' : \'text-muted-foreground\'"><MdiTune class="h-5 w-5" /><span>配置</span></NuxtLink>\n'
+        '          <NuxtLink to="/profile" class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" :class="route.path === \'/profile\' ? \'text-primary\' : \'text-muted-foreground\'"><MdiAccount class="h-5 w-5" /><span>我的</span></NuxtLink>\n'
+        '        </nav>\n'
+        '      </SidebarInset>'
+    )
+    rep(dv, dock_old, dock_new, "mobile-dock")
+
     # ---- 10. 模板模块：保留字段类型 + 可选类型 + 移动友好 + 并入集合 ----
     # (a) CreateModal：允许选类型，字段行移动友好
     rep(f"{fe}/components/Template/CreateModal.vue",
