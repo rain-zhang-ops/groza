@@ -100,15 +100,3 @@ CREATE TABLE IF NOT EXISTS gx_audit_log (
 );
 CREATE INDEX IF NOT EXISTS ix_audit_item ON gx_audit_log(item_id, ts);
 CREATE INDEX IF NOT EXISTS ix_audit_ts   ON gx_audit_log(ts);
-
-CREATE TABLE IF NOT EXISTS gx_idempotency (
-  key           TEXT PRIMARY KEY,
-  ts            TEXT NOT NULL,
-  response_json TEXT
-);
-
-CREATE TABLE IF NOT EXISTS gx_ai_cache (
-  hash        TEXT PRIMARY KEY,
-  ts          TEXT NOT NULL,
-  result_json TEXT
-);

@@ -53,7 +53,7 @@ def apply_schema(t):
     # 清空 gx_ 数据表（幂等重跑）
     for tbl in ["gx_audit_log", "gx_document_line", "gx_document",
                 "gx_group_config_history", "gx_group_config",
-                "gx_idempotency", "gx_ai_cache", "gx_schema_version"]:
+                "gx_schema_version"]:
         t.execute(f"DELETE FROM {tbl}")
     t.commit()
 
@@ -75,7 +75,8 @@ def ensure_schema(t):
             if col not in have:
                 t.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} TEXT")
     # 清理已被取代的陈旧表（数据已在 gx_group_config / 源头，冗余）
-    for tbl in ["gx_attribute_option", "gx_attribute_def", "gx_config_history", "gx_config"]:
+    for tbl in ["gx_attribute_option", "gx_attribute_def", "gx_config_history", "gx_config",
+                "gx_idempotency", "gx_ai_cache"]:
         t.execute(f"DROP TABLE IF EXISTS {tbl}")
     t.commit()
 
@@ -326,31 +327,6 @@ def migrate_audit(s, t, data_dir):
                 n += 1
     return n
 
-def migrate_idem(t, data_dir):
-    path = os.path.join(data_dir, "idem.json")
-    n = 0
-    if os.path.exists(path):
-        d = load_json(path)
-        for k, v in (d.items() if isinstance(d, dict) else []):
-            t.execute("INSERT OR IGNORE INTO gx_idempotency (key,ts,response_json)"
-                      " VALUES (?,?,?)", (k, now_iso(), json.dumps(v, ensure_ascii=False)))
-            n += 1
-    return n
-
-def migrate_ai_cache(t, data_dir):
-    cache_dir = os.path.join(data_dir, "ai-cache")
-    n = 0
-    if os.path.isdir(cache_dir):
-        for fn in os.listdir(cache_dir):
-            if not fn.endswith(".json"):
-                continue
-            with open(os.path.join(cache_dir, fn), encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-            t.execute("INSERT OR IGNORE INTO gx_ai_cache (hash,ts,result_json) VALUES (?,?,?)",
-                      (fn[:-5], now_iso(), content))
-            n += 1
-    return n
-
 def migrate_trash(s, t, data_dir):
     path = os.path.join(data_dir, "trash2.json")
     entries = {}
@@ -419,8 +395,6 @@ def main():
                 "媒体槽位(front/detail)": migrate_media(t, t),
                 "单据/行": migrate_documents(t, t, a.data),
                 "审计": migrate_audit(t, t, a.data),
-                "幂等": migrate_idem(t, a.data),
-                "AI缓存": migrate_ai_cache(t, a.data),
                 "回收站": migrate_trash(t, t, a.data),
             }
             t.execute("INSERT INTO gx_schema_version (version,applied_at) VALUES (2,?)",
@@ -473,8 +447,6 @@ def main():
         report["媒体槽位(front/detail)"] = migrate_media(s, t)
         report["单据/行"] = migrate_documents(s, t, a.data)
         report["审计"] = migrate_audit(s, t, a.data)
-        report["幂等"] = migrate_idem(t, a.data)
-        report["AI缓存"] = migrate_ai_cache(t, a.data)
         report["回收站"] = migrate_trash(s, t, a.data)
         t.execute("INSERT INTO gx_schema_version (version,applied_at) VALUES (2,?)",
                   (now_iso(),))
