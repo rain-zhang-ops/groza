@@ -971,23 +971,18 @@
   watch(() => filter.q, (v) => { window.clearTimeout(histTimer); histTimer = window.setTimeout(() => pushSearch(v || ""), 1500); });
 
   // ---------- PWA 安装 / 通知 ----------
-  const installEvt = ref<any>(null);
+  // 不拦截 beforeinstallprompt（preventDefault 会让浏览器控制台报 "Banner not shown"），
+  // 安装走浏览器原生入口（Edge/Chrome 地址栏右侧安装图标；iOS Safari 分享菜单）。
   const canInstall = ref(false);
   const notifyOn = ref(false);
   let notifyTimer: number | undefined;
-  function onBIP(e: Event) {
-    e.preventDefault();
-    installEvt.value = e;
-    canInstall.value = true;
+  function detectInstall() {
+    const standalone = window.matchMedia?.("(display-mode: standalone)").matches || (navigator as any).standalone === true;
+    canInstall.value = !standalone;
   }
-  async function install() {
-    if (installEvt.value) {
-      installEvt.value.prompt();
-      installEvt.value = null;
-      canInstall.value = false;
-    } else {
-      flash("iOS：Safari「分享」→「添加到主屏幕」");
-    }
+  function install() {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+    flash(ios ? "iOS：Safari「分享」→「添加到主屏幕」" : "点浏览器地址栏右侧的「安装」图标即可安装到桌面");
   }
   function checkLow() {
     const low = rows.value.filter(isLow);
@@ -1153,7 +1148,7 @@
   function cardStyle(r: Row) { return { transform: `translateX(${swipe[r.id] || 0}px)`, transition: touchMoved ? "none" : "transform .15s" }; }
 
   onMounted(async () => {
-    window.addEventListener("beforeinstallprompt", onBIP);
+    detectInstall();
     syncOq();
     window.addEventListener("hb:offline-queue", syncOq);
     connectWS();
@@ -1171,7 +1166,6 @@
     await load();
   });
   onBeforeUnmount(() => {
-    window.removeEventListener("beforeinstallprompt", onBIP);
     window.removeEventListener("hb:offline-queue", syncOq);
     closeScan();
     if (notifyTimer) window.clearInterval(notifyTimer);
