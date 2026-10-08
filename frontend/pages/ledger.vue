@@ -2257,7 +2257,7 @@
             @touchend="onTE(r)"
           >
             <div class="flex gap-3">
-              <button v-if="r.thumb" class="shrink-0 self-start overflow-hidden rounded-xl border" @click="preview = imgUrl(r)"><img :src="imgUrl(r)" loading="lazy" decoding="async" width="56" height="56" class="h-14 w-14 object-cover opacity-0 transition active:scale-95" @load="revealImg" /></button>
+              <button v-if="r.thumb" class="shrink-0 self-start overflow-hidden rounded-xl border" @click="preview = imgUrl(r)"><img :src="imgUrl(r)" decoding="async" width="56" height="56" class="h-14 w-14 object-cover opacity-0 transition active:scale-95" @load="revealImg" /></button>
               <button v-else class="grid h-14 w-14 shrink-0 place-items-center self-start rounded-xl border border-dashed bg-muted/60 text-muted-foreground transition active:scale-95" @click="pickPhoto(r)"><MdiCamera class="h-5 w-5" /></button>
               <div class="min-w-0 flex-1">
                 <div class="flex items-start gap-1.5">
@@ -2342,7 +2342,7 @@
               <td :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
-                  <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" decoding="async" width="36" height="36" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover opacity-0 transition hover:scale-110" @load="revealImg" @click="preview = imgUrl(r)" />
+                  <img v-if="r.thumb" :src="imgUrl(r)" decoding="async" width="36" height="36" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover opacity-0 transition hover:scale-110" @load="revealImg" @click="preview = imgUrl(r)" />
                   <button v-else class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
                   <button v-if="r.thumb" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
                 </div>
