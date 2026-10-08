@@ -1,6 +1,7 @@
 <script setup lang="ts">
   const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
   import { toast } from "@/components/ui/sonner";
+  import MdiAlertOutline from "~icons/mdi/alert-outline";
 
   definePageMeta({
     middleware: ["auth"],
@@ -20,6 +21,7 @@
     sell: number | null;
     purchase: number | null;
     qty: number;
+    safety: number;
     thumb: string | null;
   };
   type IntakeItem = { entityId: string; name?: string; count: number; cost: number; sell: number };
@@ -43,10 +45,6 @@
   const SUP_KEY = "hb.intake.suppliers";
   const suppliers = ref<string[]>([]);
   try { suppliers.value = JSON.parse(localStorage.getItem(SUP_KEY) || "[]"); } catch (_e) { suppliers.value = []; }
-
-  const btnGhost = "inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50";
-  const btnPrimary = "inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50";
-  const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
 
   function num(v: unknown): number | null {
     if (v === null || v === undefined || v === "") return null;
@@ -74,7 +72,7 @@
         brand: fieldOf(e, "品牌") || e.parent || "",
         size: fieldOf(e, "尺寸") || "", spec: fieldOf(e, "规格") || "", color: fieldOf(e, "颜色") || "",
         sell: num(fieldOf(e, "售价")), purchase: num(fieldOf(e, "进价")),
-        qty: e.quantity ?? 0, thumb: e.thumb || null,
+        qty: e.quantity ?? 0, safety: num(fieldOf(e, "安全库存")) || 0, thumb: e.thumb || null,
       }));
       intakes.value = (fl || []) as Intake[];
     } catch (e) {
@@ -111,6 +109,20 @@
     if (!items[r.id]) items[r.id] = { entityId: r.id, name: r.name, count: 10, cost: r.purchase || 0, sell: r.sell || 0 };
   }
   function removeItem(id: string) { delete items[id]; }
+
+  // 补货草稿：低库存一键加入入库单（数量预填建议补货量）
+  const lowStock = computed(() => rows.value
+    .filter(r => r.safety > 0 && r.qty <= r.safety)
+    .map(r => ({ row: r, id: r.id, name: r.name, qty: r.qty, safety: r.safety, suggest: Math.max(1, r.safety - r.qty) }))
+    .sort((a, b) => (a.qty - a.safety) - (b.qty - b.safety)));
+  function addRestock(x: { row: Row; suggest: number }) {
+    if (!items[x.row.id]) { addItem(x.row); items[x.row.id].count = x.suggest; }
+  }
+  function copyRestock() {
+    const lines = [`补货清单 ${new Date().toLocaleDateString()}`, ...lowStock.value.map(x => `· ${x.name}  当前 ${x.qty}/安全 ${x.safety}  建议补 ${x.suggest}`)];
+    const txt = lines.join("\n");
+    navigator.clipboard?.writeText(txt).then(() => flash("已复制补货清单")).catch(() => window.prompt("复制：", txt));
+  }
 
   function flash(t: string) {
     try { toast(t); } catch (_e) { msg.value = t; }
@@ -190,8 +202,8 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-4 flex flex-wrap items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">入库</h1>
+      <header class="mb-6 flex flex-wrap items-center gap-2">
+        <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">入库</h1>
         <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/intake-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库记录</NuxtLink>
@@ -202,8 +214,26 @@
 
       </header>
 
+      <!-- 补货草稿 -->
+      <section v-if="lowStock.length" class="mb-5 rounded-xl border bg-card p-3">
+        <div class="mb-2 flex items-center gap-2">
+          <MdiAlertOutline class="h-5 w-5 text-amber-600" />
+          <span class="text-sm font-medium">补货草稿</span>
+          <span class="text-xs text-muted-foreground">低库存 {{ lowStock.length }} 款</span>
+          <button class="ml-auto rounded-lg border bg-background px-2.5 py-1 text-xs transition hover:bg-muted active:scale-95" @click="copyRestock">复制清单</button>
+        </div>
+        <div class="divide-y text-sm">
+          <div v-for="x in lowStock" :key="x.id" class="flex items-center gap-2 py-1.5">
+            <span class="min-w-0 flex-1 truncate">{{ x.name }}</span>
+            <span class="shrink-0 text-xs tabular-nums text-muted-foreground">当前 {{ x.qty }} / 安全 {{ x.safety }}</span>
+            <span class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs tabular-nums text-amber-600">建议补 {{ x.suggest }}</span>
+            <button class="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-primary transition hover:bg-primary/10" @click="addRestock(x)">＋加入</button>
+          </div>
+        </div>
+      </section>
+
       <!-- 入库单表单 -->
-      <section class="mb-5 rounded-xl border bg-card p-3 shadow-sm">
+      <section class="mb-5 rounded-xl border bg-card p-3">
         <div class="flex flex-wrap items-center gap-2">
           <input v-model="supplier" :class="[inputCls, 'w-full md:w-56']" list="sup-list" placeholder="供应商（自由填写）" @change="saveSupplier" />
           <datalist id="sup-list">
@@ -237,7 +267,7 @@
           <span class="ml-auto font-semibold tabular-nums">总成本 ¥{{ fmt(totalCost) }}</span>
         </div>
         <div class="space-y-2">
-          <div v-for="l in cartList" :key="l.entityId" class="flex flex-wrap items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm shadow-sm">
+          <div v-for="l in cartList" :key="l.entityId" class="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
             <span class="min-w-0 flex-1 truncate">{{ l.name }}</span>
             <label class="flex items-center gap-1 text-xs text-muted-foreground">数量
               <input v-model.number="l.count" type="number" inputmode="numeric" :class="[inputCls, 'w-16']" />

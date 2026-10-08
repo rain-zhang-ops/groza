@@ -68,12 +68,14 @@
     <Teleport to="#collection-header-actions" defer>
       <Button size="sm" :loading="saving" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
     </Teleport>
-    <div class="rounded-md border bg-card p-4">
+    <div class="rounded-xl border bg-card p-4">
       <p class="text-sm text-muted-foreground">配置全局选项（每行一个或用逗号分隔）；留空回退为按物品自动汇总。</p>
     </div>
 
-    <div v-if="loading" class="rounded-md border bg-card p-4 text-sm text-muted-foreground">加载中…</div>
-    <div v-else class="grid gap-4 rounded-md border bg-card p-4 md:grid-cols-2">
+    <div v-if="loading" class="space-y-3">
+      <div v-for="i in 3" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
+    </div>
+    <div v-else class="grid gap-4 rounded-xl border bg-card p-4 md:grid-cols-2">
       <label class="block text-sm font-medium">
         尺寸
         <textarea v-model="form.sizes" rows="6" class="mt-1 w-full rounded-lg border bg-background p-2 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="A4&#10;A5&#10;A5S&#10;B5"></textarea>

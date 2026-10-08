@@ -741,9 +741,6 @@
   const presets = ref<Array<{ name: string; view: Record<string, any> }>>([]);
   const presetName = ref("");
 
-  const btnGhost = "inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50";
-  const btnPrimary = "inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50";
-  const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
   const chip = "inline-flex cursor-pointer items-center gap-1.5 rounded-lg border bg-background px-3 py-1.5 text-sm transition-colors hover:bg-muted";
   const cellPad = computed(() => (density.value === "compact" ? "px-3 py-1" : "px-3 py-2"));
 
@@ -1857,16 +1854,16 @@
 <template>
   <div class="overflow-x-clip bg-background text-foreground" @touchstart.passive="onPullStart" @touchmove.passive="onPullMove" @touchend="onPullEnd">
     <div v-if="offlineReadonly" class="bg-amber-500/15 px-3 py-1.5 text-center text-xs font-medium text-amber-700">离线只读：显示最近缓存，联网后自动更新</div>
-    <div v-if="pulling" class="flex justify-center py-2"><span class="rounded-full bg-primary/10 px-3 py-1 text-xs text-primary">{{ refreshing ? "刷新中…" : "松开刷新" }}</span></div>
+    <div v-if="pulling" class="flex justify-center py-2"><span class="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{{ refreshing ? "刷新中…" : "松开刷新" }}</span></div>
     <div class="mx-auto max-w-[1700px] p-3 md:p-6" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
       <!-- 顶栏 -->
       <header class="mb-4">
         <div class="flex flex-wrap items-center gap-2">
           <div class="flex items-center gap-2">
-            <span class="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary"><MdiPackageVariantClosed class="h-4 w-4" /></span>
-            <h1 class="text-lg font-semibold tracking-tight md:text-xl">物品台账</h1>
+            <span class="grid h-7 w-7 place-items-center rounded-lg bg-muted text-muted-foreground"><MdiPackageVariantClosed class="h-4 w-4" /></span>
+            <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">物品台账</h1>
           </div>
-          <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">{{ filtered.length }} 款</span>
+          <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{{ filtered.length }} 款</span>
           <span v-if="totals.low" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">
             <span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货 {{ totals.low }}
           </span>
@@ -1920,9 +1917,9 @@
       </header>
 
       <!-- AI 队列 -->
-      <div v-if="aiTasks.length" class="mb-4 rounded-xl border bg-card p-3 text-sm shadow-sm">
+      <div v-if="aiTasks.length" class="mb-4 rounded-xl border bg-card p-3 text-sm">
         <div class="flex items-center gap-2">
-          <span class="grid h-6 w-6 place-items-center rounded-md bg-primary/10 text-primary"><MdiImageSearch class="h-3.5 w-3.5" /></span>
+          <span class="grid h-6 w-6 place-items-center rounded-md bg-muted text-muted-foreground"><MdiImageSearch class="h-3.5 w-3.5" /></span>
           <span class="font-medium">AI 队列</span>
           <span class="text-xs text-muted-foreground tabular-nums">处理中 {{ aiActive }} · 完成 {{ aiDone }} · 失败 {{ aiFailed }}</span>
           <button class="ml-auto rounded-lg border bg-background px-2.5 py-1 text-xs transition hover:bg-muted active:scale-95" @click="clearAIDone">清除已结束</button>
@@ -1942,7 +1939,7 @@
       <div v-if="aiConfirm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="aiConfirmNext">
         <div class="w-full max-w-md rounded-2xl bg-card p-4 shadow-xl">
           <div class="mb-3 flex items-center gap-2">
-            <span class="grid h-6 w-6 place-items-center rounded-md bg-primary/10 text-primary"><MdiImageSearch class="h-3.5 w-3.5" /></span>
+            <span class="grid h-6 w-6 place-items-center rounded-md bg-muted text-muted-foreground"><MdiImageSearch class="h-3.5 w-3.5" /></span>
             <span class="font-medium">AI 识别结果确认</span>
             <span class="text-xs text-muted-foreground tabular-nums">待确认 {{ aiPending }}<template v-if="aiActive"> · 识别中 {{ aiActive }}</template></span>
           </div>
@@ -2001,7 +1998,7 @@
       </div>
 
       <!-- 桌面筛选 -->
-      <div v-if="!isMobile" class="mb-4 rounded-xl border bg-card p-3 shadow-sm">
+      <div v-if="!isMobile" class="mb-4 rounded-xl border bg-card p-3">
         <div class="flex flex-wrap items-end gap-3">
           <label class="flex flex-col gap-1 text-xs text-muted-foreground">品牌
             <select v-model="filter.brand" :class="inputCls">
@@ -2123,7 +2120,7 @@
 
       <!-- 汇总 -->
       <Transition name="fold">
-        <div v-if="showSummary" class="mb-4 rounded-xl border bg-card p-4 text-sm shadow-sm">
+        <div v-if="showSummary" class="mb-4 rounded-xl border bg-card p-4 text-sm">
           <div class="mb-3 flex items-center gap-2">
             <span class="font-semibold">汇总</span>
             <select v-model="summaryDim" :class="[inputCls, 'px-2 py-1']">
@@ -2226,7 +2223,7 @@
 
       <!-- 手机卡片 -->
       <TransitionGroup v-else-if="isMobile" name="card" tag="div" class="space-y-2.5">
-        <div v-for="r in paged" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card shadow-sm">
+        <div v-for="r in paged" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card">
           <div v-show="(swipe[r.id] || 0) < 0" class="absolute inset-y-0 right-0 flex items-center gap-2 bg-primary/5 px-2.5">
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,-1); closeSwipe(r)"><MdiMinus class="h-5 w-5" /></button>
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,1); closeSwipe(r)"><MdiPlus class="h-5 w-5" /></button>
@@ -2252,7 +2249,7 @@
                   <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">售罄</span>
                 </div>
                 <div class="mt-1.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
-                  <button class="rounded-md bg-primary/10 px-1.5 py-0.5 text-primary" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
+                  <button class="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
                   <span v-if="r.brand" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.brand }}</span>
                   <span v-if="r.size" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.size }}</span>
                   <span v-if="r.spec" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.spec }}</span>
@@ -2299,7 +2296,7 @@
       </TransitionGroup>
 
       <!-- 桌面表格 -->
-      <div v-else class="table-scroll overflow-x-auto rounded-xl border bg-card shadow-sm" :class="density === 'compact' ? 'text-[13px]' : ''">
+      <div v-else class="table-scroll overflow-x-auto rounded-xl border bg-card" :class="density === 'compact' ? 'text-[13px]' : ''">
         <table class="w-full border-collapse">
           <thead class="bg-card">
             <tr class="text-left text-xs text-muted-foreground">
@@ -2424,7 +2421,7 @@
         <div class="sheet-panel flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl border-t bg-card shadow-2xl">
           <div class="relative flex items-center justify-between border-b px-4 pb-3 pt-4">
             <span class="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-muted-foreground/30"></span>
-            <span class="mt-2 font-semibold">筛选<span v-if="activeFilterCount" class="ml-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{{ activeFilterCount }}</span></span>
+            <span class="mt-2 font-semibold">筛选<span v-if="activeFilterCount" class="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{{ activeFilterCount }}</span></span>
             <button :class="[btnPrimary, 'mt-2 active:scale-95']" @click="filterOpen = false">完成</button>
           </div>
           <div class="flex-1 space-y-4 overflow-auto p-4 text-base" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
@@ -2510,7 +2507,7 @@
       <div v-if="addOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="addOpen = false">
         <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
-            <span class="font-semibold">新增物品</span>
+            <span class="font-display text-lg font-medium">新增物品</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="addOpen = false"><MdiClose class="h-5 w-5" /></button>
           </div>
           <div class="space-y-3 text-sm">
@@ -2585,7 +2582,7 @@
       <div v-if="qualityOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="qualityOpen = false">
         <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
-            <span class="font-semibold">数据体检 · {{ qualityStats.total }} 款</span>
+            <span class="font-display text-lg font-medium">数据体检 · {{ qualityStats.total }} 款</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="qualityOpen = false"><MdiClose class="h-5 w-5" /></button>
           </div>
           <p class="mb-2 text-xs text-muted-foreground">点任意项以筛选出对应的物品，便于批量修正。</p>
@@ -2620,7 +2617,7 @@
       <div v-if="importOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="importOpen = false">
         <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
-            <span class="font-semibold">批量导入</span>
+            <span class="font-display text-lg font-medium">批量导入</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="importOpen = false"><MdiClose class="h-5 w-5" /></button>
           </div>
           <p class="mb-2 text-xs text-muted-foreground">每行一条，列用 Tab 或逗号分隔；顺序：名称,品牌,尺寸,规格,颜色,材质,数量,进价,售价,安全库存,分类。可含表头。分类填已有品牌名（否则用下方默认分类）。</p>
@@ -2660,7 +2657,7 @@
     </Transition>
 
     <!-- 移动 FAB -->
-    <div v-if="isMobile" class="fixed bottom-5 right-4 z-40 flex flex-col items-end gap-2" style="padding-bottom: env(safe-area-inset-bottom)">
+    <div v-if="isMobile" class="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2" style="padding-bottom: env(safe-area-inset-bottom)">
       <Transition name="fold">
         <div v-if="fabOpen" class="flex flex-col items-end gap-2">
           <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; pickAI()"><MdiImageSearch class="h-4 w-4" /> 拍照新增</button>
@@ -2676,7 +2673,7 @@
       <div v-if="historyOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="historyOpen = false">
         <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
-            <span class="font-semibold">变更历史 · {{ historyTitle }}</span>
+            <span class="font-display text-lg font-medium">变更历史 · {{ historyTitle }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="historyOpen = false"><MdiClose class="h-5 w-5" /></button>
           </div>
           <div v-if="historyBusy" class="py-6 text-center text-sm text-muted-foreground">加载中…</div>
@@ -2696,7 +2693,7 @@
       <div v-if="galleryOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="closeGallery">
         <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
-            <span class="font-semibold">图片 · {{ galleryTitle }}</span>
+            <span class="font-display text-lg font-medium">图片 · {{ galleryTitle }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="closeGallery"><MdiClose class="h-5 w-5" /></button>
           </div>
           <div v-if="galleryBusy" class="py-6 text-center text-sm text-muted-foreground">处理中…</div>
@@ -2729,7 +2726,7 @@
       <div v-if="fieldsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="fieldsOpen = false">
         <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
-            <span class="font-semibold">自定义字段 · {{ fieldsItem?.name }}</span>
+            <span class="font-display text-lg font-medium">自定义字段 · {{ fieldsItem?.name }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="fieldsOpen = false"><MdiClose class="h-5 w-5" /></button>
           </div>
           <div class="space-y-2">

@@ -27,7 +27,6 @@
   const dFrom = ref("");
   const dTo = ref("");
   const fParty = ref("");
-  const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
 
   function flash(t: string) { try { toast(t); } catch (_e) { alert(t); } }
   function fmt(n: number | null | undefined): string { return n === null || n === undefined ? "0.00" : Number(n).toFixed(2); }
@@ -96,21 +95,21 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-4 flex flex-wrap items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">单据</h1>
-        <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">{{ matched.length }} 单</span>
+      <header class="mb-6 flex flex-wrap items-center gap-2">
+        <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">单据</h1>
+        <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{{ matched.length }} 单</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/intake" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库</NuxtLink>
-          <NuxtLink to="/outbound" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库</NuxtLink>
-          <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
+          <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
+          <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
       </header>
 
-      <div class="mb-3 flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1.5 shadow-sm">
+      <div class="mb-3 flex flex-wrap items-center gap-1 rounded-xl border bg-card p-1.5">
         <button v-for="k in KIND" :key="k.v" class="rounded-lg px-3 py-1.5 text-sm font-medium transition" :class="kind === k.v ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'" @click="kind = k.v">{{ k.label }}</button>
       </div>
 
-      <section class="mb-3 rounded-xl border bg-card p-2 shadow-sm">
+      <section class="mb-3 rounded-xl border bg-card p-2">
         <div class="flex flex-wrap items-center gap-2">
           <input v-model="q" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="搜索：单号 / 明细 / 备注" />
           <select v-model="fParty" :class="[inputCls, 'h-10 max-w-40 text-base']">
@@ -135,7 +134,7 @@
         <div v-for="d in matched" :key="d.id" class="rounded-xl border bg-card px-3 py-2.5 text-sm" :class="d.rolledBack ? 'opacity-50' : ''">
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-medium tabular-nums">{{ dt(d.ts) }}</span>
-            <span v-if="d.party" class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{{ d.party }}</span>
+            <span v-if="d.party" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ d.party }}</span>
             <span class="text-xs text-muted-foreground">{{ (d.items || []).length }} 款 · {{ (d.items || []).reduce((a, it) => a + it.count, 0) }} 件</span>
             <span v-if="kind !== 'outbound'" class="font-medium tabular-nums">¥{{ fmt(d.totalCost) }}</span>
             <span class="text-xs text-muted-foreground">#{{ d.id }}</span>

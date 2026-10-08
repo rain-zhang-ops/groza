@@ -53,7 +53,6 @@
   const saving = ref(false);
   const err = ref("");
   const isOwner = ref(true);
-  const inputCls = "rounded-lg border bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/40";
 
   async function loadMe() {
     try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
@@ -143,14 +142,14 @@
       <Button size="sm" :loading="saving" :disabled="!isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
     </Teleport>
 
-    <div v-if="!isOwner" class="rounded-md border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-700">仅管理员（owner）可修改库存配置。</div>
+    <div v-if="!isOwner" class="rounded-xl border border-amber-500/30 bg-amber-500/15 p-3 text-sm text-amber-700">仅管理员（owner）可修改库存配置。</div>
 
-    <div v-if="err" class="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
+    <div v-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
     <div v-else-if="loading" class="space-y-2">
-      <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-md border bg-muted/40"></div>
+      <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
     </div>
     <template v-else>
-      <details class="rounded-md border bg-card p-4 text-sm" open>
+      <details class="rounded-xl border bg-card p-4 text-sm" open>
         <summary class="cursor-pointer font-medium">说明（点开/收起）</summary>
         <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
           <li>这里配置库存的<b>四维信息模型</b>：属性 / 位置 / 媒体 / 组织。台账与 AI 会按此渲染。</li>
@@ -162,7 +161,7 @@
       </details>
 
       <!-- 属性 -->
-      <section class="space-y-3 rounded-md border bg-card p-4">
+      <section class="space-y-3 rounded-xl border bg-card p-4">
         <div class="flex items-center justify-between">
           <span class="text-sm font-semibold">属性（{{ cfg.attributes.length }}）</span>
           <Button size="sm" variant="outline" @click="addAttr"><MdiPlus class="mr-1 size-4" /> 添加属性</Button>
@@ -201,7 +200,7 @@
       </section>
 
       <!-- 位置 -->
-      <section class="space-y-3 rounded-md border bg-card p-4">
+      <section class="space-y-3 rounded-xl border bg-card p-4">
         <span class="text-sm font-semibold">位置</span>
         <label class="block text-sm">分类维度名
           <input v-model="cfg.location.dim" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="品牌" />
@@ -219,7 +218,7 @@
       </section>
 
       <!-- 媒体 -->
-      <section class="space-y-3 rounded-md border bg-card p-4">
+      <section class="space-y-3 rounded-xl border bg-card p-4">
         <div class="flex items-center justify-between">
           <span class="text-sm font-semibold">媒体槽位（{{ cfg.media.slots.length }}）</span>
           <Button size="sm" variant="outline" @click="addSlot"><MdiPlus class="mr-1 size-4" /> 添加槽位</Button>
@@ -243,7 +242,7 @@
       </section>
 
       <!-- 组织 -->
-      <section class="space-y-3 rounded-md border bg-card p-4">
+      <section class="space-y-3 rounded-xl border bg-card p-4">
         <span class="text-sm font-semibold">组织</span>
         <label class="block text-sm">标签体系名
           <input v-model="cfg.organization.tagGroup.name" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="品类" />
@@ -265,7 +264,7 @@
       </section>
 
       <!-- 权限 -->
-      <section class="space-y-2 rounded-md border bg-card p-4">
+      <section class="space-y-2 rounded-xl border bg-card p-4">
         <span class="text-sm font-semibold">权限</span>
         <p class="text-xs text-muted-foreground">管理员（owner）始终可用；以下控制普通成员（editor）可执行的操作。</p>
         <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanIntake" type="checkbox" class="size-4 accent-primary" /> 允许入库</label>
@@ -274,7 +273,7 @@
       </section>
 
       <!-- 版本历史 -->
-      <section class="space-y-2 rounded-md border bg-card p-4">
+      <section class="space-y-2 rounded-xl border bg-card p-4">
         <div class="flex items-center justify-between">
           <span class="text-sm font-semibold">版本历史（最近 {{ history.length }}）</span>
           <span class="text-xs text-muted-foreground">当前 v{{ cfg.version }}</span>

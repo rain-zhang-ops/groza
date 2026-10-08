@@ -50,10 +50,6 @@
 
   const REASONS = ["售出", "赠送", "自用", "损耗", "调拨", "其他"];
 
-  const btnGhost = "inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50";
-  const btnPrimary = "inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50";
-  const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
-
   function buzz(ms = 15) { try { (navigator as any).vibrate?.(ms); } catch (_e) { /* ignore */ } }
   function fieldOf(e: Record<string, any>, name: string): any {
     for (const f of (e.fields as Array<Record<string, any>>) || []) {
@@ -283,8 +279,8 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(6.5rem + env(safe-area-inset-bottom))">
-      <header class="mb-4 flex flex-wrap items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">出库</h1>
+      <header class="mb-6 flex flex-wrap items-center gap-2">
+        <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">出库</h1>
         <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/outbound-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库记录</NuxtLink>
@@ -296,7 +292,7 @@
       </header>
 
         <!-- 去向/原因 + 备注 -->
-        <section class="mb-3 rounded-xl border bg-card p-3 shadow-sm">
+        <section class="mb-3 rounded-xl border bg-card p-3">
           <div class="flex flex-wrap items-center gap-2">
             <label class="flex items-center gap-1 text-sm text-muted-foreground">去向/原因
               <select v-model="reason" :class="[inputCls, 'h-11 w-28 text-base']">
@@ -308,7 +304,7 @@
         </section>
 
         <!-- 搜索 + 扫码 -->
-        <section class="mb-3 rounded-xl border bg-card p-2 shadow-sm">
+        <section class="mb-3 rounded-xl border bg-card p-2">
           <div class="flex items-center gap-2">
             <input v-model="q" :class="[inputCls, 'h-12 min-w-0 flex-1 text-base']" placeholder="搜索（名称/品牌/编号/库位）" />
             <button class="grid h-12 w-12 shrink-0 place-items-center rounded-xl border bg-background transition active:scale-95" title="扫码加入" @click="openScan"><MdiBarcodeScan class="h-6 w-6" /></button>
@@ -352,10 +348,10 @@
         <section v-if="cartList.length" class="mb-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
           <div class="mb-2 flex items-center gap-2 text-sm font-medium">
             已选（{{ cartList.length }} 款 · {{ cartCount }} 件）
-            <span class="ml-auto rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{{ reason }}</span>
+            <span class="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ reason }}</span>
           </div>
           <div class="space-y-2">
-            <div v-for="l in cartList" :key="l.entityId" class="flex flex-wrap items-center gap-2 rounded-lg bg-card px-3 py-2 text-sm shadow-sm">
+            <div v-for="l in cartList" :key="l.entityId" class="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
               <span class="min-w-0 flex-1 truncate">{{ l.name }}</span>
               <span class="shrink-0 text-xs text-muted-foreground">库存 {{ rows.find(x => x.id === l.entityId)?.qty ?? "-" }}</span>
               <label class="flex items-center gap-1 text-xs text-muted-foreground">数量

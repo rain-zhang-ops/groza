@@ -27,8 +27,6 @@
   const showRolled = ref(true);
   const rollbackBusy = ref("");
 
-  const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
-
   function flash(t: string) {
     try { toast(t); } catch (_e) { msg.value = t; }
   }
@@ -103,20 +101,20 @@
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-4 flex flex-wrap items-center gap-2">
-        <h1 class="text-lg font-semibold tracking-tight md:text-xl">出库记录</h1>
-        <span class="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">{{ matched.length }} 单</span>
+      <header class="mb-6 flex flex-wrap items-center gap-2">
+        <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">出库记录</h1>
+        <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{{ matched.length }} 单</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/outbound" class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition hover:bg-primary/90">去出库</NuxtLink>
-          <NuxtLink to="/intake" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库</NuxtLink>
-          <NuxtLink to="/documents" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">单据</NuxtLink>
-          <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
+          <NuxtLink to="/outbound" :class="btnPrimary">去出库</NuxtLink>
+          <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
+          <NuxtLink to="/documents" :class="btnGhost">单据</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
 
       </header>
 
       <!-- 筛选 -->
-      <section class="mb-3 rounded-xl border bg-card p-2 shadow-sm">
+      <section class="mb-3 rounded-xl border bg-card p-2">
         <div class="flex flex-wrap items-center gap-2">
           <input v-model="q" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="搜索：商品名 / 备注 / 单号" />
           <select v-model="fReason" :class="[inputCls, 'h-10 text-base']"><option value="">全部去向</option><option v-for="r in reasons" :key="r" :value="r">{{ r }}</option></select>
@@ -125,8 +123,8 @@
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <label>从 <input v-model="dFrom" type="date" :class="[inputCls, 'h-9']" /></label>
           <label>到 <input v-model="dTo" type="date" :class="[inputCls, 'h-9']" /></label>
-          <button class="rounded-lg border px-2.5 py-1.5 transition hover:bg-muted" @click="exportCSV">导出CSV</button>
-          <button class="rounded-lg border px-2.5 py-1.5 transition hover:bg-muted" @click="copyText">复制文本</button>
+          <button :class="btnGhost" @click="exportCSV">导出CSV</button>
+          <button :class="btnGhost" @click="copyText">复制文本</button>
         </div>
         <div class="mt-1.5 text-xs text-muted-foreground">共 {{ matched.length }} 单 · 出库 {{ totalOut }} 件（不含已回滚）</div>
       </section>
@@ -139,7 +137,7 @@
         <div v-for="t in matched" :key="t.id" class="rounded-xl border bg-card px-3 py-2.5 text-sm" :class="t.rolledBack ? 'opacity-50' : ''">
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-medium tabular-nums">{{ dt(t.ts) }}</span>
-            <span v-if="t.reason" class="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{{ t.reason }}</span>
+            <span v-if="t.reason" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ t.reason }}</span>
             <span class="text-xs text-muted-foreground">{{ t.items.length }} 款 · {{ t.items.reduce((a, it) => a + it.count, 0) }} 件</span>
             <span class="text-xs text-muted-foreground">#{{ t.id }}</span>
             <button
