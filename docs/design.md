@@ -453,3 +453,23 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 2. **视觉/留白**：更浅画布(`--background-accent 96%`)、更柔边框(`--border 91%`)、更圆角(`--radius .75rem`)、更柔次要文字；自研页容器留白加大(`p-4 md:p-8`、`mb-4`)。
 
 3. **少弹窗（右侧抽屉）**：台账的新增/数据体检/批量导入/变更历史/图片/自定义字段 由居中弹窗改为**右侧抽屉**（desktop 右栏、mobile 全宽），减少打断感。
+
+### Codex 式中性配色 + 衬线标题（5）
+设计参照 OpenAI/Codex 的近单色中性系，叠加 Claude 的「衬线标题/无衬线正文」分工。
+
+- **配色**（`patches/patch_upstream.py` `patch_colors`，浅色）：画布纯白 `#fff` + Mist `#fafafa`、正文 Ink `#0d0d0d`、主按钮墨黑（Codex 式黑底白字，弃用靛蓝）、次要/静音面 `#f5f5f5`、次级文字 `#6e6e6e`、发丝边框 `#e5e5e5`、焦点环墨色、`--destructive: #ef4146`、sidebar-* 全套同步（修掉历史微调漏改侧栏的问题）。
+- **深色**（`patch_dark`）：`#171717` 底、`#212121` 卡片、主按钮反转为白底黑字、边框 `0 0% 22%`；与浅色同为中性零色相。
+- **字体**（`patch_fonts` 注入 tailwind.config）：`font-display` 衬线栈 `Georgia, Times New Roman, Songti SC, STSong, SimSun, serif`（iOS/macOS 自带宋体，零字体加载）；`font-sans` 中文优化栈；`font-mono` 系统等宽。标题一律衬线 + `font-medium`（500，衬线不用粗体）。
+- **应用面**：侧栏「Groza」字标、各自研页 h1（待办/物品台账/入库/出库/入库记录/出库记录/单据）、台账 6 个右侧抽屉标题。
+- **组件层次**：Card 改发丝边框替代投影；Button default/destructive/outline/secondary 去掉 shadow——深度靠边框与背景色差表达。
+- **PWA**：theme-color 改 `#ffffff`(light)/`#171717`(dark)，mask-icon `#0d0d0d`。
+- **迁移兼容**：`rep_any()` 支持把历史已应用的旧值（靛蓝字标/旧 theme-color）迁移到新值；`patch_colors` 锚点改为任意 `--radius:` 值，重复构建安全。
+
+### 菜单/布局/交互 Codex 化（6）
+- **侧栏分组扁平菜单**：nav 数组改扁平 + `group` 字段，`navGroups` computed 切段渲染；分组：概览(待办) / 库存(物品·盘点) / 进出(入库·出库·单据) / 库存配置(字段·选项·标签) / 设置(成员·邀请·通知·集合) / 高级(结构·工具) / 我的。组标签为小号 muted 字，去掉 Collapsible 层级与折叠箭头（⌘K 扁平 nav 天然兼容）。
+- **侧栏头部瘦身**：welcome 文案 → 衬线「Groza」字标；删除大圆 logo；「创建」改全宽发丝边框白底按钮（Codex "New thread" 式）。
+- **移动顶栏**：去 `shadow-md` 投影改 `border-b` 发丝线 + `bg-background/95 backdrop-blur`。
+- **移动 Dock**：选中态改灰底 pill（`bg-accent rounded-full` 包裹图标）+ 墨色文字，不再用主色变色。
+- **自研页统一**：计数徽章/信息 chip 一律 `bg-muted text-muted-foreground`（原 `bg-primary/10`）；页头 `mb-4`→`mb-6`；所有带边框容器去 `shadow-sm`（无边框的购物车行补 `border`）；tasks 队列卡片 hover 改 `border-foreground/25`。
+- **交互基调**（`patch_motion` 追加 main.css，哨兵 `groza-motion`）：全局 a/button/input 150ms `cubic-bezier(0.16,1,0.3,1)` 过渡、8px 细滚动条（hover 加深）、`::selection` 墨色 12%。
+- **清理**：废弃 nav-collapsible-trigger-hidden / nav-collapsible-row-minw 两个失效补丁（v2 模板已无 Collapsible）；`rep()` 支持 `new=""` 的删除型替换（sidebar-logo-rm）。
