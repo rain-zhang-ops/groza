@@ -67,6 +67,15 @@
   });
   const total = computed(() => queues.value.reduce((a, q) => a + q.count, 0));
 
+  const hideEmpty = ref(true);
+  try { hideEmpty.value = localStorage.getItem("groza.tasks.hideEmpty") !== "0"; } catch (_e) { /* ignore */ }
+  function toggleHideEmpty() {
+    hideEmpty.value = !hideEmpty.value;
+    try { localStorage.setItem("groza.tasks.hideEmpty", hideEmpty.value ? "1" : "0"); } catch (_e) { /* ignore */ }
+  }
+  const visibleQueues = computed(() => (hideEmpty.value ? queues.value.filter(q => q.count > 0) : queues.value));
+  const hiddenCount = computed(() => queues.value.length - visibleQueues.value.length);
+
   function go(q: { filter: string; q?: string }) {
     const params: Record<string, string> = {};
     if (q.filter) params.data = q.filter;
@@ -80,21 +89,33 @@
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
       <header class="mb-6 flex flex-wrap items-center gap-2">
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">待办</h1>
-        <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">共 {{ total }} 项</span>
+        <span :class="badgeCls">共 {{ total }} 项</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            role="switch"
+            :aria-checked="hideEmpty"
+            :class="btnGhost"
+            @click="toggleHideEmpty"
+          >
+            <span class="relative h-4 w-7 shrink-0 rounded-full transition-colors" :class="hideEmpty ? 'bg-primary' : 'bg-muted-foreground/30'">
+              <span class="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform" :class="hideEmpty ? 'translate-x-3' : ''"></span>
+            </span>
+            隐藏 0 项
+          </button>
           <button :class="btnGhost" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
           <NuxtLink to="/ledger" :class="btnPrimary">台账</NuxtLink>
         </div>
       </header>
 
       <div v-if="loading" class="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <div v-for="i in 6" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
+        <div v-for="i in 6" :key="i" :class="skeletonCls"></div>
       </div>
-      <div v-else-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
+      <div v-else-if="err" :class="errorCls">{{ err }}</div>
       <template v-else>
-        <section class="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div v-if="!visibleQueues.length" :class="emptyCls">没有待办事项，库存数据很健康</div>
+        <section v-else class="grid grid-cols-2 gap-3 md:grid-cols-3">
           <button
-            v-for="q in queues"
+            v-for="q in visibleQueues"
             :key="q.key"
             class="flex flex-col gap-1 rounded-2xl border bg-card p-4 text-left transition hover:border-foreground/25 active:scale-[0.98]"
             @click="go(q)"
@@ -104,7 +125,10 @@
             <span class="text-2xl font-semibold tabular-nums" :class="q.count ? 'text-foreground' : 'text-muted-foreground'">{{ q.count }}</span>
           </button>
         </section>
-        <p class="mt-2 text-xs text-muted-foreground">点卡片直达台账对应筛选，可批量处理（差异预览→确认）并可撤销。</p>
+        <p class="mt-2 text-xs text-muted-foreground">
+          点卡片直达台账对应筛选，可批量处理（差异预览→确认）并可撤销。
+          <template v-if="hiddenCount > 0">已隐藏 {{ hiddenCount }} 个无待办分类。</template>
+        </p>
       </template>
     </div>
   </div>
