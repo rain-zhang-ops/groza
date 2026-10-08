@@ -966,6 +966,8 @@
   }
   watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter], syncView, { deep: true });
   watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter, pageSize], () => { page.value = 1; }, { deep: true });
+  // 侧栏「物品 / 盘点」是同页跳转（/ledger ↔ /ledger?count=1），组件不重挂载，需监听 query 同步盘点模式
+  watch(() => route.query.count, (v) => { const want = v === "1"; if (want !== countMode.value) countMode.value = want; });
   watch(cols, () => localStorage.setItem("hb.ledger.cols", JSON.stringify(cols)), { deep: true });
   let histTimer: number | undefined;
   watch(() => filter.q, (v) => { window.clearTimeout(histTimer); histTimer = window.setTimeout(() => pushSearch(v || ""), 1500); });
