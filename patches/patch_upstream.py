@@ -205,6 +205,24 @@ def main():
         'title: "Groza | " + t("index.title"),',
         "brand-login-title")
     patch_colors(fe)
+    # 2c-2. Claude 式视觉微调（更浅画布 / 更柔边框 / 更圆角 / 更柔文字）
+    p_css = f"{fe}/assets/css/main.css"
+    rep(p_css,
+        '    --background-accent: 220 20% 90%;\n    --foreground: 222 30% 14%;',
+        '    --background-accent: 220 25% 96%;\n    --foreground: 222 33% 15%;',
+        "claude-canvas")
+    rep(p_css,
+        '    --input: 220 13% 86%;\n    --border: 220 13% 88%;',
+        '    --input: 220 16% 90%;\n    --border: 220 16% 91%;',
+        "claude-border")
+    rep(p_css,
+        '    --muted-foreground: 220 10% 42%;',
+        '    --muted-foreground: 220 9% 46%;',
+        "claude-muted")
+    rep(p_css,
+        '    --radius: 0.6rem;\n}',
+        '    --radius: 0.75rem;\n}',
+        "claude-radius")
     rebrand_locale(fe)
     patch_dark(fe)
     # 大字号：set-theme.js 启动即应用（跟随本地偏好）

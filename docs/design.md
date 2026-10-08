@@ -449,3 +449,5 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 
 ### Claude 式交互（分步）
 1. **⌘K 命令面板**：快捷键改 `Ctrl+K`；面板纳入所有导航（含子项）+ 新建项；搜索按文本过滤；统一入口。
+
+2. **视觉/留白**：更浅画布(`--background-accent 96%`)、更柔边框(`--border 91%`)、更圆角(`--radius .75rem`)、更柔次要文字；自研页容器留白加大(`p-4 md:p-8`、`mb-4`)。

@@ -189,8 +189,8 @@
 
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
-    <div class="mx-auto max-w-5xl p-3 md:p-6" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
-      <header class="mb-3 flex flex-wrap items-center gap-2">
+    <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
+      <header class="mb-4 flex flex-wrap items-center gap-2">
         <h1 class="text-lg font-semibold tracking-tight md:text-xl">入库</h1>
         <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
