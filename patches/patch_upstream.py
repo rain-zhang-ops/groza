@@ -22,14 +22,31 @@ def fail(name, why):
 
 def rep(path, old, new, name, done_msg=None):
     s = open(path, encoding="utf-8").read()
-    if new in s:
+    if new and new in s:
         skip(name)
         return
     if old not in s:
+        if not new:
+            skip(name, "已移除")
+            return
         fail(name, "锚点未找到（上游代码可能已变化，请人工更新补丁）")
         return
     open(path, "w", encoding="utf-8").write(s.replace(old, new, 1))
     done(name if not done_msg else f"{name} -> {done_msg}")
+
+
+def rep_any(path, olds, new, name, done_msg=None):
+    """rep 的迁移版：olds 按优先级列出可替换锚点（含历史已应用的旧值），任一中招即替换。"""
+    s = open(path, encoding="utf-8").read()
+    if new in s:
+        skip(name)
+        return
+    for old in olds:
+        if old in s:
+            open(path, "w", encoding="utf-8").write(s.replace(old, new, 1))
+            done(name if not done_msg else f"{name} -> {done_msg}")
+            return
+    fail(name, "锚点未找到（上游代码可能已变化，请人工更新补丁）")
 
 
 def patch_colors(fe):
@@ -44,46 +61,50 @@ def patch_colors(fe):
     if i < 0:
         fail("theme-colors", "未找到 :root,.homebox")
         return
-    j = s.find("--radius: 0.5rem;", i)
+    j = s.find("--radius:", i)
     if j < 0:
         fail("theme-colors", "未找到 radius 锚点")
         return
-    end = j + len("--radius: 0.5rem;")
-    if "222 47% 45%" in s[i:end]:
+    end = s.find(";", j)
+    if end < 0:
+        fail("theme-colors", "radius 锚点缺少分号")
+        return
+    end += 1
+    if "--ring: 0 0% 5%;" in s[i:end]:
         skip("theme-colors")
         return
     new = """:root,.homebox {
     --background: 0 0% 100%;
-    --background-accent: 220 20% 90%;
-    --foreground: 222 30% 14%;
-    --primary: 222 47% 45%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 222 26% 20%;
-    --secondary-foreground: 210 30% 92%;
-    --accent: 222 45% 95%;
-    --accent-foreground: 222 40% 25%;
-    --muted: 220 14% 94%;
-    --muted-foreground: 220 10% 42%;
+    --background-accent: 0 0% 98%;
+    --foreground: 0 0% 5%;
+    --primary: 0 0% 5%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 5%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 5%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 43%;
     --card: 0 0% 100%;
-    --card-foreground: 222 30% 14%;
+    --card-foreground: 0 0% 5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 30% 14%;
-    --destructive: 0 72% 51%;
+    --popover-foreground: 0 0% 5%;
+    --destructive: 358 84% 59%;
     --destructive-foreground: 0 0% 100%;
-    --input: 220 13% 86%;
-    --border: 220 13% 88%;
-    --ring: 222 47% 45%;
-    --sidebar-background: 220 20% 96%;
-    --sidebar-foreground: 222 30% 14%;
-    --sidebar-primary: 222 47% 45%;
-    --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 220 20% 90%;
-    --sidebar-accent-foreground: 222 30% 14%;
-    --sidebar-border: 220 13% 88%;
-    --sidebar-ring: 222 47% 45%;
-    --radius: 0.6rem;"""
+    --input: 0 0% 90%;
+    --border: 0 0% 90%;
+    --ring: 0 0% 5%;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 5%;
+    --sidebar-primary: 0 0% 5%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 94%;
+    --sidebar-accent-foreground: 0 0% 5%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 0 0% 5%;
+    --radius: 0.75rem;"""
     open(p, "w", encoding="utf-8").write(s[:i] + new + s[end:])
-    done("theme-colors Groza 配色（靛蓝/石板风暴风）")
+    done("theme-colors Groza 配色（Codex 式中性单色风）")
 
 
 def rebrand_locale(fe):
@@ -121,47 +142,151 @@ def patch_dark(fe):
     except OSError:
         fail("dark-mode", "无法读取 main.css")
         return
+    dark_vars = """    --background: 0 0% 9%;
+    --background-accent: 0 0% 13%;
+    --foreground: 0 0% 93%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 5%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 93%;
+    --accent: 0 0% 17%;
+    --accent-foreground: 0 0% 93%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 63%;
+    --card: 0 0% 13%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 13%;
+    --popover-foreground: 0 0% 93%;
+    --destructive: 358 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --input: 0 0% 22%;
+    --border: 0 0% 22%;
+    --ring: 0 0% 90%;
+    --sidebar-background: 0 0% 7%;
+    --sidebar-foreground: 0 0% 93%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 0 0% 5%;
+    --sidebar-accent: 0 0% 15%;
+    --sidebar-accent-foreground: 0 0% 93%;
+    --sidebar-border: 0 0% 22%;
+    --sidebar-ring: 0 0% 90%;"""
+    dark = (
+        "\n\n/* Groza 深色主题：跟随系统 prefers-color-scheme；<html data-gx-theme> 可手动覆盖"
+        "（light 强制浅色 / dark 强制深色，见 我的→主题设置）。未放入 @layer base，优先级高于所有分层主题。*/\n"
+        "@media (prefers-color-scheme: dark) {\n"
+        "  :root:not([data-gx-theme=\"light\"]) {\n" + dark_vars + "\n  }\n}\n\n"
+        ":root[data-gx-theme=\"dark\"] {\n" + dark_vars + "\n}\n"
+        "/* /Groza 深色主题 */\n"
+    )
+    marker = "\n\n/* Groza 深色主题"
+    if marker in s:
+        # 已追加过（历史版本）：替换深色块本身（不波及块后内容，如 groza-motion）
+        i = s.find(marker)
+        term = "/* /Groza 深色主题 */\n"
+        if term in s[i:]:
+            end = s.find(term, i) + len(term)
+        else:
+            # 旧块无终结标记：到媒体查询的收尾 "}\n" 为止
+            end = s.find("\n}\n", i)
+            if end < 0:
+                fail("dark-mode", "深色块结尾未找到")
+                return
+            end += len("\n}\n")
+        open(p, "w", encoding="utf-8").write(s[:i] + dark + s[end:])
+        done("dark-mode 深色跟随系统+手动覆盖 -> Codex 中性深色")
+        return
     if "prefers-color-scheme: dark" in s:
         skip("dark-mode")
         return
-    dark = """
-
-/* Groza 深色主题（跟随系统 prefers-color-scheme）。未放入 @layer base，优先级高于所有分层主题。*/
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: 222 22% 11%;
-    --background-accent: 222 18% 16%;
-    --foreground: 210 30% 92%;
-    --primary: 217 70% 60%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 222 25% 18%;
-    --secondary-foreground: 210 30% 92%;
-    --accent: 222 30% 22%;
-    --accent-foreground: 210 30% 92%;
-    --muted: 222 20% 20%;
-    --muted-foreground: 215 20% 68%;
-    --card: 222 22% 14%;
-    --card-foreground: 210 30% 92%;
-    --popover: 222 22% 14%;
-    --popover-foreground: 210 30% 92%;
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --input: 222 18% 26%;
-    --border: 222 18% 24%;
-    --ring: 217 70% 60%;
-    --sidebar-background: 222 25% 10%;
-    --sidebar-foreground: 210 30% 90%;
-    --sidebar-primary: 217 70% 60%;
-    --sidebar-primary-foreground: 222 47% 11%;
-    --sidebar-accent: 222 25% 18%;
-    --sidebar-accent-foreground: 210 30% 92%;
-    --sidebar-border: 222 18% 24%;
-    --sidebar-ring: 217 70% 60%;
-  }
-}
-"""
     open(p, "a", encoding="utf-8").write(dark)
-    done("dark-mode 深色跟随系统")
+    done("dark-mode 深色跟随系统+手动覆盖")
+
+
+def patch_fonts(fe):
+    p = f"{fe}/tailwind.config.js"
+    try:
+        s = open(p, encoding="utf-8").read()
+    except OSError:
+        fail("fonts", "无法读取 tailwind.config.js")
+        return
+    if "fontFamily" in s:
+        skip("fonts")
+        return
+    anchor = "    extend: {\n      colors: {"
+    new = '''    extend: {
+      fontFamily: {
+        sans: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "PingFang SC",
+          "Hiragino Sans GB",
+          "Microsoft YaHei",
+          "Noto Sans SC",
+          "sans-serif",
+        ],
+        display: ["Georgia", "Times New Roman", "Songti SC", "STSong", "SimSun", "serif"],
+        mono: ["ui-monospace", "SF Mono", "Menlo", "Consolas", "monospace"],
+      },
+      colors: {'''
+    if anchor not in s:
+        fail("fonts", "未找到 theme.extend.colors 锚点")
+        return
+    open(p, "w", encoding="utf-8").write(s.replace(anchor, new, 1))
+    done("fonts 字体栈（sans 中文优化 / display 衬线 / mono）")
+
+
+def patch_card_ring(fe):
+    rep(f"{fe}/components/ui/card/Card.vue",
+        "'rounded-lg bg-card text-card-foreground shadow',",
+        "'rounded-lg border bg-card text-card-foreground',",
+        "card-ring 卡片发丝边框替代投影")
+    p = f"{fe}/components/ui/button/index.ts"
+    rep(p,
+        'default: "bg-primary text-primary-foreground shadow hover:bg-primary/90",',
+        'default: "bg-primary text-primary-foreground hover:bg-primary/90",',
+        "btn-default-shadow-rm")
+    rep(p,
+        'destructive: "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90",',
+        'destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",',
+        "btn-destructive-shadow-rm")
+    rep(p,
+        'outline: "border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground",',
+        'outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",',
+        "btn-outline-shadow-rm")
+    rep(p,
+        'secondary: "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80",',
+        'secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",',
+        "btn-secondary-shadow-rm")
+
+
+def patch_motion(fe):
+    """Codex 式交互基调：150ms 克制动效、细滚动条、墨色 selection。"""
+    p = f"{fe}/assets/css/main.css"
+    try:
+        s = open(p, encoding="utf-8").read()
+    except OSError:
+        fail("motion", "无法读取 main.css")
+        return
+    if "groza-motion" in s:
+        skip("motion")
+        return
+    css = """
+
+/* groza-motion：克制动效 + 细滚动条 + 墨色 selection */
+a, button, [role="button"], input, select, textarea {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+::selection { background: hsl(var(--foreground) / 0.12); }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: hsl(var(--foreground) / 0.15); border-radius: 9999px; }
+*::-webkit-scrollbar-thumb:hover { background: hsl(var(--foreground) / 0.28); }
+*::-webkit-scrollbar-track { background: transparent; }
+"""
+    open(p, "a", encoding="utf-8").write(css)
+    done("motion 交互基调（过渡/滚动条/selection）")
 
 
 def main():
@@ -196,50 +321,41 @@ def main():
         'name: "Homebox",\n      short_name: "Homebox",',
         'name: "Groza",\n      short_name: "Groza",',
         "pwa-name-groza")
-    rep(f"{fe}/layouts/default.vue",
-        '<AppHeaderText class="h-6" />',
-        '<span class="text-xl font-bold tracking-tight text-secondary-foreground">Groza</span>',
+    rep_any(f"{fe}/layouts/default.vue",
+        ['<AppHeaderText class="h-6" />',
+         '<span class="text-xl font-bold tracking-tight text-secondary-foreground">Groza</span>'],
+        '<span class="font-display text-xl font-medium tracking-tight text-foreground">Groza</span>',
         "brand-header-groza")
     rep(f"{fe}/pages/index.vue",
         'title: "HomeBox | " + t("index.title"),',
         'title: "Groza | " + t("index.title"),',
         "brand-login-title")
     patch_colors(fe)
-    # 2c-2. Claude 式视觉微调（更浅画布 / 更柔边框 / 更圆角 / 更柔文字）
-    p_css = f"{fe}/assets/css/main.css"
-    rep(p_css,
-        '    --background-accent: 220 20% 90%;\n    --foreground: 222 30% 14%;',
-        '    --background-accent: 220 25% 96%;\n    --foreground: 222 33% 15%;',
-        "claude-canvas")
-    rep(p_css,
-        '    --input: 220 13% 86%;\n    --border: 220 13% 88%;',
-        '    --input: 220 16% 90%;\n    --border: 220 16% 91%;',
-        "claude-border")
-    rep(p_css,
-        '    --muted-foreground: 220 10% 42%;',
-        '    --muted-foreground: 220 9% 46%;',
-        "claude-muted")
-    rep(p_css,
-        '    --radius: 0.6rem;\n}',
-        '    --radius: 0.75rem;\n}',
-        "claude-radius")
+    patch_fonts(fe)
     rebrand_locale(fe)
     patch_dark(fe)
-    # 大字号：set-theme.js 启动即应用（跟随本地偏好）
+    # 大字号 + 手动主题：set-theme.js 启动即应用（跟随本地偏好）
     p_theme = f"{fe}/public/set-theme.js"
     try:
         ts = open(p_theme, encoding="utf-8").read()
+        changed = False
         if "groza.bigfont" not in ts:
             ts += '\ntry { if (localStorage.getItem("groza.bigfont") === "1") { document.documentElement.style.fontSize = "18px"; } } catch (e) {}\n'
+            changed = True
+        if "groza.theme" not in ts:
+            ts += '\ntry { var gxt = localStorage.getItem("groza.theme") || ""; if (gxt) { document.documentElement.setAttribute("data-gx-theme", gxt); } } catch (e) {}\n'
+            changed = True
+        if changed:
             open(p_theme, "w", encoding="utf-8").write(ts)
-            done("bigfont-boot")
+            done("theme-boot（bigfont + data-gx-theme）")
         else:
-            skip("bigfont-boot")
+            skip("theme-boot")
     except OSError:
-        fail("bigfont-boot", "set-theme.js 不可读")
-    rep(f"{fe}/app.vue",
-        '<Meta name="theme-color" content="#5b7f67" />',
-        '<Meta name="theme-color" content="#2f3e7e" media="(prefers-color-scheme: light)" />\n      <Meta name="theme-color" content="#111725" media="(prefers-color-scheme: dark)" />',
+        fail("theme-boot", "set-theme.js 不可读")
+    rep_any(f"{fe}/app.vue",
+        ['<Meta name="theme-color" content="#5b7f67" />',
+         '<Meta name="theme-color" content="#2f3e7e" media="(prefers-color-scheme: light)" />\n      <Meta name="theme-color" content="#111725" media="(prefers-color-scheme: dark)" />'],
+        '<Meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />\n      <Meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)" />',
         "pwa-theme-color")
 
     # ---- 2d. 移动端/PWA 打磨：viewport-fit、iOS 独立应用元信息、品牌色 ----
@@ -255,10 +371,13 @@ def main():
         '      ],\n'
         '      script: [{ src: "/set-theme.js" }],\n    },\n  },',
         "mobile-head")
-    rep(f"{fe}/app.vue",
-        '<Link rel="mask-icon" href="/mask-icon.svg" color="#5b7f67" />',
-        '<Link rel="mask-icon" href="/mask-icon.svg" color="#2f3e7e" />',
+    rep_any(f"{fe}/app.vue",
+        ['<Link rel="mask-icon" href="/mask-icon.svg" color="#5b7f67" />',
+         '<Link rel="mask-icon" href="/mask-icon.svg" color="#2f3e7e" />'],
+        '<Link rel="mask-icon" href="/mask-icon.svg" color="#0d0d0d" />',
         "mask-icon-color")
+    patch_card_ring(fe)
+    patch_motion(fe)
 
     # ---- 2b. PWA Service Worker 策略 ----
     #   /api        -> NetworkOnly（保证库存/流水实时，不被缓存落后）
@@ -318,15 +437,7 @@ def main():
     else:
         skip("nav-hide-locations")
 
-    # ---- 4. 侧边栏折叠样式两处 ----
-    rep(dv,
-        'class="flex size-12 items-center justify-center"',
-        'class="flex size-12 items-center justify-center group-data-[collapsible=icon]:hidden"',
-        "nav-collapsible-trigger-hidden")
-    rep(dv,
-        '<SidebarMenuItem class="flex gap-1">',
-        '<SidebarMenuItem class="flex min-w-0 gap-1">',
-        "nav-collapsible-row-minw")
+    # ---- 4. （已废弃）侧栏 Collapsible 样式补丁：v2 分组扁平菜单无 Collapsible 标记 ----
 
     # ---- 5. 分类页默认隐藏物品 ----
     rep(f"{fe}/pages/locations.vue",
@@ -465,7 +576,7 @@ def main():
             open(p, "w", encoding="utf-8").write(s)
             done("routes-biz 入库路由 + 公开图片路由")
 
-    # ---- 9. 侧边栏重构（以「库存维护」为中心，整段替换 nav 数组）----
+    # ---- 9. 侧边栏重构（Codex 式分组扁平菜单，整段替换 nav 数组）----
     rep(dv,
         'import MdiCog from "~icons/mdi/cog";',
         'import MdiCog from "~icons/mdi/cog";\n  import MdiClipboardListOutline from "~icons/mdi/clipboard-list-outline";\n  import MdiTruckDeliveryOutline from "~icons/mdi/truck-delivery-outline";\n  import MdiTune from "~icons/mdi/tune";',
@@ -474,86 +585,186 @@ def main():
         'import MdiTune from "~icons/mdi/tune";',
         'import MdiTune from "~icons/mdi/tune";\n  import MdiCogOutline from "~icons/mdi/cog-outline";',
         "nav-cogoutline-icon")
+    rep(dv,
+        'import MdiCogOutline from "~icons/mdi/cog-outline";',
+        'import MdiCogOutline from "~icons/mdi/cog-outline";\n  import MdiInboxArrowDown from "~icons/mdi/inbox-arrow-down";\n  import MdiInboxArrowUp from "~icons/mdi/inbox-arrow-up";\n  import MdiAccountMultipleOutline from "~icons/mdi/account-multiple-outline";\n  import MdiEmailOutline from "~icons/mdi/email-outline";\n  import MdiBellOutline from "~icons/mdi/bell-outline";\n  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";',
+        "nav-group-icons")
+    rep(dv,
+        '    }[];\n  }[] = [',
+        '    }[];\n    group?: string;\n  }[] = [',
+        "nav-type-group-field")
     nav_body = (
         '    {\n'
         '      icon: MdiClipboardCheckOutline,\n'
-        '      id: 900,\n'
+        '      id: 900, group: "概览",\n'
         '      active: computed(() => route.path === "/tasks"),\n'
         '      name: computed(() => "待办"),\n'
         '      to: "/tasks",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiMagnify,\n'
-        '      id: 3,\n'
-        '      active: computed(() => route.path === "/ledger"),\n'
+        '      id: 3, group: "库存",\n'
+        '      active: computed(() => route.path === "/ledger" && route.query.count !== "1"),\n'
         '      name: computed(() => "物品"),\n'
         '      to: "/ledger",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiClipboardListOutline,\n'
-        '      id: 905,\n'
+        '      id: 905, group: "库存",\n'
         '      active: computed(() => route.path === "/ledger" && route.query.count === "1"),\n'
         '      name: computed(() => "盘点"),\n'
         '      to: "/ledger?count=1",\n'
         '    },\n'
         '    {\n'
-        '      icon: MdiTruckDeliveryOutline,\n'
-        '      id: 903,\n'
-        '      active: computed(() => ["/intake", "/outbound", "/documents"].includes(route.path)),\n'
-        '      name: computed(() => "进出"),\n'
+        '      icon: MdiInboxArrowDown,\n'
+        '      id: 901, group: "进出",\n'
+        '      active: computed(() => route.path === "/intake"),\n'
+        '      name: computed(() => "入库"),\n'
         '      to: "/intake",\n'
-        '      collapsible: [\n'
-        '        { id: 901, active: computed(() => route.path === "/intake"), name: computed(() => "入库"), to: "/intake" },\n'
-        '        { id: 902, active: computed(() => route.path === "/outbound"), name: computed(() => "出库"), to: "/outbound" },\n'
-        '        { id: 904, active: computed(() => route.path === "/documents"), name: computed(() => "单据"), to: "/documents" },\n'
-        '      ],\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiInboxArrowUp,\n'
+        '      id: 902, group: "进出",\n'
+        '      active: computed(() => route.path === "/outbound"),\n'
+        '      name: computed(() => "出库"),\n'
+        '      to: "/outbound",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiFileDocumentMultiple,\n'
+        '      id: 904, group: "进出",\n'
+        '      active: computed(() => route.path === "/documents"),\n'
+        '      name: computed(() => "单据"),\n'
+        '      to: "/documents",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiTune,\n'
-        '      id: 907,\n'
-        '      active: computed(() => ["/collection/fields", "/collection/ui-options", "/tags"].includes(route.path)),\n'
-        '      name: computed(() => "库存配置"),\n'
+        '      id: 9061, group: "库存配置",\n'
+        '      active: computed(() => route.path === "/collection/fields"),\n'
+        '      name: computed(() => "字段 / 位置 / 媒体 / 组织"),\n'
         '      to: "/collection/fields",\n'
-        '      collapsible: [\n'
-        '        { id: 9061, active: computed(() => route.path === "/collection/fields"), name: computed(() => "字段 / 位置 / 媒体 / 组织"), to: "/collection/fields" },\n'
-        '        { id: 9062, active: computed(() => route.path === "/collection/ui-options"), name: computed(() => "选项配置"), to: "/collection/ui-options" },\n'
-        '        { id: 9063, active: computed(() => route.path === "/tags"), name: computed(() => "标签"), to: "/tags" },\n'
-        '      ],\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiFormatListBulleted,\n'
+        '      id: 9062, group: "库存配置",\n'
+        '      active: computed(() => route.path === "/collection/ui-options"),\n'
+        '      name: computed(() => "选项配置"),\n'
+        '      to: "/collection/ui-options",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiTagMultiple,\n'
+        '      id: 9063, group: "库存配置",\n'
+        '      active: computed(() => route.path === "/tags"),\n'
+        '      name: computed(() => "标签"),\n'
+        '      to: "/tags",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiAccountMultipleOutline,\n'
+        '      id: 61, group: "设置",\n'
+        '      active: computed(() => route.path === "/collection/members"),\n'
+        '      name: computed(() => t("collection.tabs.members")),\n'
+        '      to: "/collection/members",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiEmailOutline,\n'
+        '      id: 62, group: "设置",\n'
+        '      active: computed(() => route.path === "/collection/invites"),\n'
+        '      name: computed(() => t("collection.tabs.invites")),\n'
+        '      to: "/collection/invites",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiBellOutline,\n'
+        '      id: 63, group: "设置",\n'
+        '      active: computed(() => route.path === "/collection/notifiers"),\n'
+        '      name: computed(() => t("collection.tabs.notifiers")),\n'
+        '      to: "/collection/notifiers",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiCog,\n'
-        '      id: 7,\n'
-        '      active: computed(() => ["/collection/members", "/collection/invites", "/collection/notifiers", "/collection/settings"].includes(route.path)),\n'
-        '      name: computed(() => "设置"),\n'
-        '      to: "/collection/members",\n'
-        '      collapsible: [\n'
-        '        { id: 61, active: computed(() => route.path === "/collection/members"), name: computed(() => t("collection.tabs.members")), to: "/collection/members" },\n'
-        '        { id: 62, active: computed(() => route.path === "/collection/invites"), name: computed(() => t("collection.tabs.invites")), to: "/collection/invites" },\n'
-        '        { id: 63, active: computed(() => route.path === "/collection/notifiers"), name: computed(() => t("collection.tabs.notifiers")), to: "/collection/notifiers" },\n'
-        '        { id: 64, active: computed(() => route.path === "/collection/settings"), name: computed(() => t("collection.tabs.settings")), to: "/collection/settings" },\n'
-        '      ],\n'
+        '      id: 64, group: "设置",\n'
+        '      active: computed(() => route.path === "/collection/settings"),\n'
+        '      name: computed(() => t("collection.tabs.settings")),\n'
+        '      to: "/collection/settings",\n'
         '    },\n'
         '    {\n'
-        '      icon: MdiCogOutline,\n'
-        '      id: 908,\n'
-        '      active: computed(() => ["/collection/entity-types", "/collection/tools"].includes(route.path)),\n'
-        '      name: computed(() => "高级"),\n'
+        '      icon: MdiFileTree,\n'
+        '      id: 9081, group: "高级",\n'
+        '      active: computed(() => route.path === "/collection/entity-types"),\n'
+        '      name: computed(() => "结构"),\n'
         '      to: "/collection/entity-types",\n'
-        '      collapsible: [\n'
-        '        { id: 9081, active: computed(() => route.path === "/collection/entity-types"), name: computed(() => "结构"), to: "/collection/entity-types" },\n'
-        '        { id: 9082, active: computed(() => route.path === "/collection/tools"), name: computed(() => "工具"), to: "/collection/tools" },\n'
-        '      ],\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiWrench,\n'
+        '      id: 9082, group: "高级",\n'
+        '      active: computed(() => route.path === "/collection/tools"),\n'
+        '      name: computed(() => "工具"),\n'
+        '      to: "/collection/tools",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiAccount,\n'
-        '      id: 6,\n'
+        '      id: 6, group: "",\n'
         '      active: computed(() => route.path === "/profile"),\n'
         '      name: computed(() => t("menu.profile")),\n'
         '      to: "/profile",\n'
         '    },\n'
     )
+    navgroups_src = (
+        '\n\n  const navGroups = computed(() => {\n'
+        '    const out: { label: string; items: typeof nav }[] = [];\n'
+        '    for (const n of nav) {\n'
+        '      const g = n.group || "";\n'
+        '      if (!out.length || out[out.length - 1].label !== g) out.push({ label: g, items: [] });\n'
+        '      out[out.length - 1].items.push(n);\n'
+        '    }\n'
+        '    return out;\n'
+        '  });'
+    )
+    sidebar_content_new = (
+        '<SidebarContent>\n'
+        '          <SidebarGroup v-for="g in navGroups" :key="g.label || \'ungrouped\'" class="py-0.5">\n'
+        '            <SidebarGroupLabel\n'
+        '              v-if="g.label"\n'
+        '              class="px-2 pb-1 pt-3 text-xs font-medium tracking-wide text-muted-foreground group-data-[collapsible=icon]:hidden"\n'
+        '            >\n'
+        '              {{ g.label }}\n'
+        '            </SidebarGroupLabel>\n'
+        '            <SidebarMenu>\n'
+        '              <SidebarMenuItem v-for="n in g.items" :key="n.id">\n'
+        '                <SidebarMenuLink\n'
+        '                  :href="n.to"\n'
+        '                  :class="{\n'
+        '                    \'bg-accent text-accent-foreground\': n.active?.value,\n'
+        '                    \'text-nowrap\': typeof locale === \'string\' && locale.startsWith(\'zh-\'),\n'
+        '                  }"\n'
+        '                  :tooltip="n.name.value"\n'
+        '                >\n'
+        '                  <component :is="n.icon" v-if="n.icon" />\n'
+        '                  <span>{{ n.name.value }}</span>\n'
+        '                </SidebarMenuLink>\n'
+        '              </SidebarMenuItem>\n'
+        '            </SidebarMenu>\n'
+        '          </SidebarGroup>\n'
+        '\n'
+        '          <!-- makes scanner accessible easily if using legacy header -->\n'
+        '          <SidebarGroup v-if="preferences.displayLegacyHeader">\n'
+        '            <SidebarMenu>\n'
+        '              <SidebarMenuItem>\n'
+        '                <SidebarMenuButton\n'
+        '                  :class="{\n'
+        '                    \'text-nowrap\': typeof locale === \'string\' && locale.startsWith(\'zh-\'),\n'
+        '                  }"\n'
+        '                  :tooltip="$t(\'menu.scanner\')"\n'
+        '                  @click.prevent="openDialog(DialogID.Scanner)"\n'
+        '                >\n'
+        '                  <MdiQrcodeScan />\n'
+        '                  <span>{{ $t("menu.scanner") }}</span>\n'
+        '                </SidebarMenuButton>\n'
+        '              </SidebarMenuItem>\n'
+        '            </SidebarMenu>\n'
+        '          </SidebarGroup>\n'
+        '        </SidebarContent>'
+    )
     s_nav = open(dv, encoding="utf-8").read()
-    if 'name: computed(() => "高级")' in s_nav:
+    if 'group: "概览"' in s_nav and "navGroups" in s_nav:
         skip("nav-restructure")
     else:
         marker = "  }[] = ["
@@ -567,8 +778,97 @@ def main():
                 fail("nav-restructure", "未找到 nav 数组结尾")
             else:
                 s_nav = s_nav[:arr_start] + "\n" + nav_body.rstrip("\n") + "\n  ];" + s_nav[arr_end + len("\n  ];"):]
-                open(dv, "w", encoding="utf-8").write(s_nav)
-                done("nav-restructure 库存维护为中心")
+        sc_i = s_nav.find("<SidebarContent>")
+        sc_j = s_nav.find("</SidebarContent>")
+        if sc_i < 0 or sc_j < 0:
+            fail("nav-restructure", "未找到 SidebarContent 块")
+        else:
+            s_nav = s_nav[:sc_i] + sidebar_content_new + s_nav[sc_j + len("</SidebarContent>"):]
+        if "navGroups = computed" not in s_nav:
+            # navGroups 插在 nav 数组之后（紧跟刚 splice 的数组结尾）
+            insert_at = s_nav.find("\n  ];", s_nav.find('group: "概览"'))
+            if insert_at < 0:
+                fail("nav-restructure", "未找到 navGroups 注入点")
+            else:
+                s_nav = s_nav[:insert_at + len("\n  ];")] + navgroups_src + s_nav[insert_at + len("\n  ];"):]
+        open(dv, "w", encoding="utf-8").write(s_nav)
+        done("nav-restructure Codex 式分组扁平菜单")
+
+    # ---- 9a. 侧栏头部瘦身（Codex 式：衬线字标 + 轻量创建按钮）----
+    rep(dv,
+        '          <SidebarGroupLabel class="text-base group-data-[collapsible=icon]:hidden">{{\n            $t("global.welcome", { username: username })\n          }}</SidebarGroupLabel>',
+        '          <div class="w-full px-2 pb-1 pt-2 group-data-[collapsible=icon]:hidden">\n            <span class="font-display text-lg font-medium tracking-tight">Groza</span>\n          </div>',
+        "sidebar-wordmark")
+    rep(dv,
+        '          <NuxtLink class="group-data-[collapsible=icon]:hidden" to="/home">\n            <div class="flex size-24 items-center justify-center rounded-full bg-background-accent p-4">\n              <AppLogo />\n            </div>\n          </NuxtLink>\n',
+        '',
+        "sidebar-logo-rm")
+    rep(dv,
+        'class="flex justify-center bg-primary text-primary-foreground drop-shadow-md hover:bg-primary/90 active:bg-primary/90 active:text-primary-foreground group-data-[collapsible=icon]:justify-start"',
+        'class="h-9 w-full justify-start gap-2 border border-input bg-background hover:bg-accent"',
+        "sidebar-create-btn")
+    # 移动顶栏：去投影改发丝线
+    rep(dv,
+        'flex-col bg-secondary p-2 shadow-md sm:h-[var(--header-height)]',
+        'flex-col border-b bg-background/95 p-2 backdrop-blur sm:h-[var(--header-height)]',
+        "mobile-header-hairline")
+    # 顶栏图标去黑块：SidebarTrigger 回退 ghost（图标色改 current），搜索/扫码改 outline
+    rep(f"{fe}/components/ui/sidebar/SidebarTrigger.vue",
+        '<MdiMenu class="text-primary-foreground" />',
+        '<MdiMenu class="text-current" />',
+        "trigger-icon-current")
+    rep(dv,
+        '<SidebarTrigger class="absolute left-2 top-2 hidden lg:flex" variant="default" />',
+        '<SidebarTrigger class="absolute left-2 top-2 hidden lg:flex" />',
+        "trigger-ghost-legacy")
+    rep(dv,
+        '<SidebarTrigger variant="default" />',
+        '<SidebarTrigger />',
+        "trigger-ghost-mobile")
+    rep(dv,
+        '<Button size="icon" @click="triggerSearch">',
+        '<Button size="icon" variant="outline" @click="triggerSearch">',
+        "header-search-outline")
+    rep(dv,
+        '<Button size="icon" @click="openScanner">',
+        '<Button size="icon" variant="outline" @click="openScanner">',
+        "header-scan-outline")
+    # 移除页脚开发信息（版本号/构建号/API 链接）
+    rep(dv,
+        '          <footer v-if="status" class="bottom-0 w-full pb-4 text-center">\n            <p class="text-center text-sm">\n              <span\n                v-html="\n                  DOMPurify.sanitize(\n                    $t(\'global.footer.version_link\', {\n                      version: status.build.version.replace(/^v/, \'\'),\n                      build: status.build.commit,\n                    })\n                  )\n                "\n              />\n              ~\n              <span v-html="DOMPurify.sanitize($t(\'global.footer.api_link\'))" />\n            </p>\n          </footer>\n',
+        '',
+        "footer-dev-info-rm")
+    rep(f"{fe}/pages/index.vue",
+        '    <footer v-if="status" class="bottom-0 mt-auto w-full pb-4 text-center">\n      <p class="text-center text-sm">\n        {{ $t("global.version", { version: status.build.version }) }} ~\n        {{ $t("global.build", { build: status.build.commit }) }}\n      </p>\n    </footer>\n',
+        '',
+        "login-footer-dev-info-rm")
+    # 我的页注入「最近变更」卡片（读 /api/v1/audit）；哨兵防重复注入（锚点注入后仍在文中）
+    _prof = f"{fe}/pages/profile.vue"
+    _prof_s = open(_prof, encoding="utf-8").read()
+    if "recentChanges" in _prof_s:
+        skip("profile-audit-script")
+    else:
+        rep(_prof,
+            '  const { t } = useI18n();',
+            '  const { t } = useI18n();\n  const $gx = useNuxtApp().$gxFetch as typeof globalThis.$fetch;\n  const recentChanges = ref<Array<Record<string, any>>>([]);\n  function actLabel(a: string): string {\n    const m: Record<string, string> = { "intake.create": "入库", "intake.rollback": "回滚入库", "outbound.create": "出库", "outbound.rollback": "回滚出库", "ledger.field_patch": "修改字段", "trash2.mark": "标记删除", "trash2.purge": "彻底删除", "gx.bulk_apply": "批量修改" };\n    return m[a] || a;\n  }\n  function dtGx(ts: string): string { return String(ts || "").slice(5, 16).replace("T", " "); }\n  onMounted(async () => {\n    try {\n      const a = await $gx<Array<Record<string, any>>>("/api/v1/audit", { params: { limit: 12 } });\n      recentChanges.value = Array.isArray(a) ? a : ((a as any).entries || []);\n    } catch (_e) { /* ignore */ }\n  });',
+            "profile-audit-script")
+    rep(f"{fe}/pages/profile.vue",
+        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />',
+        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <span> 最近变更 </span>\n            <template #description> 最近 12 条库存操作记录 </template>\n          </BaseSectionHeader>\n        </template>\n        <div class="px-4 pb-4">\n          <div v-if="!recentChanges.length" class="py-4 text-center text-sm text-muted-foreground">暂无记录</div>\n          <div v-else class="divide-y text-sm">\n            <div v-for="(r, i) in recentChanges" :key="i" class="flex items-center gap-2 py-1.5">\n              <span class="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{{ dtGx(r.ts) }}</span>\n              <span class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ actLabel(r.action) }}</span>\n              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </BaseCard>\n\n      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />',
+        "profile-audit-card")
+    # 主题设置：ThemePicker（30+ daisyUI 主题会覆盖 Groza 配色）→ 外观/大字号开关
+    _prof_s = open(_prof, encoding="utf-8").read()
+    if "setGxTheme" in _prof_s:
+        skip("profile-theme-toggles-script")
+    else:
+        rep(_prof,
+            '  const { t } = useI18n();\n  const $gx = useNuxtApp().$gxFetch as typeof globalThis.$fetch;',
+            '  const { t } = useI18n();\n  const gxTheme = ref("");\n  const bigfont = ref(false);\n  try {\n    gxTheme.value = localStorage.getItem("groza.theme") || "";\n    bigfont.value = localStorage.getItem("groza.bigfont") === "1";\n  } catch (_e) { /* ignore */ }\n  function setGxTheme(v: string) {\n    gxTheme.value = v;\n    try {\n      if (v) { localStorage.setItem("groza.theme", v); document.documentElement.setAttribute("data-gx-theme", v); }\n      else { localStorage.removeItem("groza.theme"); document.documentElement.removeAttribute("data-gx-theme"); }\n    } catch (_e) { /* ignore */ }\n  }\n  function toggleBigfont() {\n    bigfont.value = !bigfont.value;\n    try {\n      localStorage.setItem("groza.bigfont", bigfont.value ? "1" : "0");\n      document.documentElement.style.fontSize = bigfont.value ? "18px" : "";\n    } catch (_e) { /* ignore */ }\n  }\n  const $gx = useNuxtApp().$gxFetch as typeof globalThis.$fetch;',
+            "profile-theme-toggles-script")
+    rep(f"{fe}/pages/profile.vue",
+        '          <ThemePicker />',
+        '          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">\n            <span class="text-sm text-muted-foreground">外观</span>\n            <div class="flex gap-1 rounded-xl border bg-card p-1">\n              <button\n                v-for="o in [[\'\', \'跟随系统\'], [\'light\', \'浅色\'], [\'dark\', \'深色\']]"\n                :key="o[0]"\n                class="rounded-lg px-2.5 py-1 text-sm transition"\n                :class="gxTheme === o[0] ? \'bg-primary text-primary-foreground\' : \'hover:bg-muted\'"\n                @click="setGxTheme(o[0])"\n              >\n                {{ o[1] }}\n              </button>\n            </div>\n            <span class="text-sm text-muted-foreground">大字号</span>\n            <button\n              class="rounded-lg border px-2.5 py-1 text-sm transition"\n              :class="bigfont ? \'bg-primary text-primary-foreground\' : \'hover:bg-muted\'"\n              @click="toggleBigfont"\n            >\n              {{ bigfont ? "已开启" : "已关闭" }}\n            </button>\n          </div>',
+        "profile-theme-toggles-ui")
 
     # 默认落地页：/home -> /tasks（待办）
     rep(f"{fe}/pages/index.vue", 'return "/home";', 'return "/tasks";', "landing-home-to-tasks")
@@ -583,7 +883,7 @@ def main():
         '<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center pb-16 lg:pb-0">',
         "mobile-dock-padding")
     dock_old = '        </div>\n      </SidebarInset>'
-    dock_new = (
+    dock_v1 = (
         '        </div>\n'
         '        <nav class="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t bg-card/95 backdrop-blur lg:hidden" style="padding-bottom: env(safe-area-inset-bottom)">\n'
         '          <NuxtLink to="/tasks" class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px]" :class="route.path === \'/tasks\' ? \'text-primary\' : \'text-muted-foreground\'"><MdiClipboardCheckOutline class="h-5 w-5" /><span>待办</span></NuxtLink>\n'
@@ -594,7 +894,36 @@ def main():
         '        </nav>\n'
         '      </SidebarInset>'
     )
-    rep(dv, dock_old, dock_new, "mobile-dock")
+    def dock_item(to, active_expr, icon, label):
+        return (
+            '          <NuxtLink to="' + to + '" class="flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[11px] transition-colors" :class="'
+            + active_expr + ' ? \'text-foreground\' : \'text-muted-foreground\'"><span class="rounded-full px-3 py-0.5 transition-colors" :class="'
+            + active_expr + ' ? \'bg-accent\' : \'\'"><' + icon + ' class="h-5 w-5" /></span><span>' + label + '</span></NuxtLink>\n'
+        )
+    dock_head = (
+        '        </div>\n'
+        '        <nav class="fixed inset-x-0 bottom-0 z-40 flex items-stretch justify-around border-t bg-card/95 backdrop-blur lg:hidden" style="padding-bottom: env(safe-area-inset-bottom)">\n'
+    )
+    dock_tail = '        </nav>\n      </SidebarInset>'
+    dock_v2 = (
+        dock_head
+        + dock_item("/tasks", "route.path === '/tasks'", "MdiClipboardCheckOutline", "待办")
+        + dock_item("/ledger", "route.path === '/ledger'", "MdiMagnify", "物品")
+        + dock_item("/intake", "['/intake', '/outbound', '/documents'].includes(route.path)", "MdiTruckDeliveryOutline", "进出")
+        + dock_item("/collection/fields", "(route.path.startsWith('/collection') || route.path === '/tags')", "MdiTune", "配置")
+        + dock_item("/profile", "route.path === '/profile'", "MdiAccount", "我的")
+        + dock_tail
+    )
+    dock_new = (
+        dock_head
+        + dock_item("/tasks", "route.path === '/tasks'", "MdiClipboardCheckOutline", "待办")
+        + dock_item("/ledger", "route.path === '/ledger'", "MdiMagnify", "物品")
+        + dock_item("/intake", "['/intake', '/outbound', '/documents'].includes(route.path)", "MdiTruckDeliveryOutline", "进出")
+        + dock_item("/collection/fields", "(route.path.startsWith('/collection') || route.path === '/tags')", "MdiCogOutline", "管理")
+        + dock_item("/profile", "route.path === '/profile'", "MdiAccount", "我的")
+        + dock_tail
+    )
+    rep_any(dv, [dock_v2, dock_v1, dock_old], dock_new, "mobile-dock")
 
     # ---- 9c. ⌘K 命令面板（Claude 式统一入口）----
     qm = f"{fe}/components/App/QuickMenuModal.vue"
