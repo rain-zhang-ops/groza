@@ -2251,7 +2251,7 @@
             @touchend="onTE(r)"
           >
             <div class="flex gap-3">
-              <button v-if="r.thumb" class="shrink-0 self-start overflow-hidden rounded-xl border" @click="preview = imgUrl(r)"><img :src="imgUrl(r)" loading="lazy" decoding="async" class="h-14 w-14 object-cover transition active:scale-95" /></button>
+              <button v-if="r.thumb" class="shrink-0 self-start overflow-hidden rounded-xl border" @click="preview = imgUrl(r)"><img :src="imgUrl(r)" loading="lazy" decoding="async" width="56" height="56" class="h-14 w-14 object-cover opacity-0 transition active:scale-95" @load="($event.target as HTMLImageElement).classList.remove('opacity-0')" /></button>
               <button v-else class="grid h-14 w-14 shrink-0 place-items-center self-start rounded-xl border border-dashed bg-muted/60 text-muted-foreground transition active:scale-95" @click="pickPhoto(r)"><MdiCamera class="h-5 w-5" /></button>
               <div class="min-w-0 flex-1">
                 <div class="flex items-start gap-1.5">
@@ -2336,7 +2336,7 @@
               <td :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
-                  <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" decoding="async" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover transition hover:scale-110" @click="preview = imgUrl(r)" />
+                  <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" decoding="async" width="36" height="36" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover opacity-0 transition hover:scale-110" @load="($event.target as HTMLImageElement).classList.remove('opacity-0')" @click="preview = imgUrl(r)" />
                   <button v-else class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
                   <button v-if="r.thumb" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
                 </div>
@@ -2780,11 +2780,11 @@
   .table-scroll::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / .45); border-radius: 9999px; border: 2px solid transparent; background-clip: padding-box; }
   .table-scroll::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / .7); background-clip: padding-box; }
 
-  .row-enter-active, .card-enter-active { transition: all .28s ease; }
-  .row-enter-from, .card-enter-from { opacity: 0; transform: translateY(6px); }
-  .row-leave-active, .card-leave-active { transition: all .18s ease; }
-  .row-leave-to, .card-leave-to { opacity: 0; }
-  .row-move, .card-move { transition: transform .28s ease; }
+  .card-enter-active { transition: opacity .28s ease, transform .28s ease; }
+  .card-enter-from { opacity: 0; transform: translateY(6px); }
+  .card-leave-active { transition: opacity .18s ease, transform .18s ease; position: absolute; width: 100%; }
+  .card-leave-to { opacity: 0; }
+  .card-move { transition: transform .28s ease; }
 
   .fold-enter-active, .fold-leave-active { transition: opacity .2s ease, transform .2s ease; }
   .fold-enter-from, .fold-leave-to { opacity: 0; transform: translateY(-6px); }
