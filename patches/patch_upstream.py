@@ -578,6 +578,33 @@ def main():
     )
     rep(dv, dock_old, dock_new, "mobile-dock")
 
+    # ---- 9c. ⌘K 命令面板（Claude 式统一入口）----
+    qm = f"{fe}/components/App/QuickMenuModal.vue"
+    rep(qm,
+        'useDialogHotkey(DialogID.QuickMenu, { code: "Backquote", ctrl: true });',
+        'useDialogHotkey(DialogID.QuickMenu, { code: "KeyK", ctrl: true });',
+        "cmdk-hotkey")
+    rep(qm,
+        ":placeholder=\"t('components.quick_menu.shortcut_hint')\"",
+        ":placeholder=\"'搜索页面 / 执行操作…  Ctrl+K'\"",
+        "cmdk-placeholder")
+    rep(qm,
+        ':value="`global.navigate_${i + 1}`"',
+        ':value="navigate.text"',
+        "cmdk-navigate-value")
+    nav_old = (
+        '    ...nav.map(v => ({\n'
+        '      text: computed(() => v.name.value),\n'
+        '      href: v.to,\n'
+        '      type: "navigate" as const,\n'
+        '    })),')
+    nav_new = (
+        '    ...nav.flatMap(v => [\n'
+        '      { text: computed(() => v.name.value), href: v.to, type: "navigate" as const },\n'
+        '      ...(v.collapsible || []).map(c => ({ text: computed(() => c.name.value), href: c.to, type: "navigate" as const })),\n'
+        '    ]),')
+    rep(dv, nav_old, nav_new, "cmdk-nav-children")
+
     # ---- 10. 模板模块：保留字段类型 + 可选类型 + 移动友好 + 并入集合 ----
     # (a) CreateModal：允许选类型，字段行移动友好
     rep(f"{fe}/components/Template/CreateModal.vue",

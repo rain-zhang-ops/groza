@@ -446,3 +446,6 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - 头部统一：`flex-wrap` + 标题 + 计数徽章 + 右侧操作区；次要入口用 border 按钮，主动作用 primary 按钮。
 - 互跳集合统一：进出/记录/单据页均含「入库 · 出库 · 单据 · 台账」（记录页前置主动作「去入库/去出库」）。
 - 空/加载/错误态统一：`h-16 animate-pulse` 骨架、`rounded-xl border border-destructive/40 …` 错误、`py-10 text-center text-sm text-muted-foreground` 空态。
+
+### Claude 式交互（分步）
+1. **⌘K 命令面板**：快捷键改 `Ctrl+K`；面板纳入所有导航（含子项）+ 新建项；搜索按文本过滤；统一入口。
