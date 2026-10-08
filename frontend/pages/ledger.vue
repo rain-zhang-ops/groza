@@ -2273,13 +2273,21 @@
               </div>
             </div>
             <div class="mt-3 flex items-center gap-2">
-              <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
-                <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
-                <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
-                <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
-              </div>
-              <button v-if="!safetyEditing[r.id]" class="ml-auto px-2 py-2 text-xs text-muted-foreground transition active:scale-95" @click="editSafety(r)">安全 {{ r.safety ?? "＋" }}</button>
-              <input v-else v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="ml-auto h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :ref="focusEl" @blur="doneSafetyEdit(r)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
+              <template v-if="countMode">
+                <span class="shrink-0 text-xs text-muted-foreground">实盘</span>
+                <input v-model.number="r.count" inputmode="numeric" type="number" min="0" :placeholder="String(r.qty)" class="h-11 w-20 shrink-0 rounded-xl border bg-background text-center text-base font-semibold tabular-nums outline-none focus:ring-2 focus:ring-ring/40" />
+                <span class="shrink-0 text-xs text-muted-foreground">账面 {{ r.qty }}</span>
+                <span class="ml-auto text-base font-semibold tabular-nums" :class="diffClass(r)">{{ diffText(r) || "—" }}</span>
+              </template>
+              <template v-else>
+                <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
+                  <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
+                  <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+                  <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
+                </div>
+                <button v-if="!safetyEditing[r.id]" class="ml-auto px-2 py-2 text-xs text-muted-foreground transition active:scale-95" @click="editSafety(r)">安全 {{ r.safety ?? "＋" }}</button>
+                <input v-else v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="ml-auto h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :ref="focusEl" @blur="doneSafetyEdit(r)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
+              </template>
             </div>
             <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" />图片</button>
