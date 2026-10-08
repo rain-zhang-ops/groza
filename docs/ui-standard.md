@@ -52,7 +52,7 @@
 
 - **容器**：统一 `max-w-5xl p-4 md:p-8`；仅数据密集页（台账）允许例外：`max-w-[1700px] p-3 md:p-6`。
 - **padding-bottom**：标准页 `calc(2rem + env(safe-area-inset-bottom))`；有常驻底部保存条的页（出库）用 `calc(6.5rem + env(...))`；台账 `calc(1rem + env(...))`（有父级 pb-16 补偿）。
-- **页头**：`mb-6`；h1 前不加装饰图标块（台账的图标块为历史遗留，待去）。页头按钮顺序：主流程入口（primary）在最右，互跳链接（border）在左。
+- **页头**：`mb-6`；h1 前不加装饰图标块。页头按钮顺序：主流程入口（primary）在最右，互跳链接（border）在左；每屏主按钮至多 1 个。
 - **互跳集合**：进出/记录/单据页头部固定含「入库 · 出库 · 单据 · 台账」。
 
 ## 4. 组件标准
@@ -73,7 +73,10 @@ btnGhost   = "inline-flex items-center gap-1 rounded-lg border bg-background px-
 **输入框**（统一常量）：
 ```js
 const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none transition focus:ring-2 focus:ring-ring/40";
+// 移动端 sheet/表单用 inputClsLg：mt-1 w-full ... px-3 py-2.5 text-base（16px 防 iOS 自动缩放）
 ```
+
+**抽屉**（共享常量 `drawerWrap`/`drawerPanel`，配合 `:style="safeBottom"` 处理底部安全区，禁止页内重写）。
 
 **列表**：行卡 `rounded-xl border bg-card px-3 py-2.5 text-sm`，列表 `space-y-2`；表格用 `rounded-xl border bg-card` 包裹 + 行 `border-b last:border-0`。
 
@@ -129,11 +132,11 @@ const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-
 |---|---|---|---|
 | ~~1~~ | ~~按钮/输入框常量 6+ 处重复定义~~ ✅ 已抽 `frontend/composables/uiClasses.ts`（btnGhost/btnPrimary/inputCls/badgeCls/skeletonCls/errorCls/emptyCls） | 全部主流页 | §8 |
 | ~~2~~ | ~~collection 两页体系不同~~ ✅ 圆角升 rounded-xl、ui-options 加骨架屏、inputCls 统一（保留 Teleport 页头与 toast） | fields.vue、ui-options.vue | §8 |
-| 3 | ledger 页头 mb-4 + 图标块、根容器无 min-h | ledger.vue | §3 |
-| 4 | danger 按钮三种写法（含 red-* 裸色） | ledger.vue:1987 等 | §4 |
-| 5 | amber 写法剩余不统一（ledger 盘点条/撤销按钮） | ledger.vue | §2 |
-| 6 | 骨架/error/empty 圆角与高度不统一（ledger shimmer/p-6/dashed） | ledger.vue | §6 |
-| 7 | 弹层 Transition 名不一致（fade/fold/sheet，fold 方向反） | ledger.vue | §5 |
+| ~~3~~ | ~~ledger 页头 mb-4 + 图标块、根容器无 min-h~~ ✅ 图标块已删、mb-6、min-h-[70vh] | ledger.vue | §3 |
+| ~~4~~ | ~~danger 按钮三种写法（含 red-* 裸色）~~ ✅ 全量改 destructive token（含数据体检抽屉 3 处） | ledger.vue | §4 |
+| ~~5~~ | ~~amber 写法剩余不统一~~ ✅ 撤销按钮统一 border-amber-400/bg-amber-500/10；盘点提交按钮改 btnPrimary | ledger.vue | §2 |
+| ~~6~~ | ~~骨架/error/empty 圆角与高度不统一~~ ✅ 换 skeletonCls/errorCls/emptyCls，删 animate-shimmer | ledger.vue | §6 |
+| ~~7~~ | ~~弹层 Transition 名不一致~~ ✅ 底部弹层统一 sheet（差异预览/盘点报告 fold→sheet）；fold 只留行内展开 | ledger.vue | §5 |
 | ~~8~~ | ~~records 页导出/复制按钮缺 text-sm~~ ✅ 已换 btnGhost | intake/outbound-records.vue | §4 |
-| 9 | 徽章规格混用（text-[11px]、px-2） | ledger.vue、records 页 | §4 |
-| 10 | z-index 混用（筛选 sheet z-40 与 FAB 同级） | ledger.vue | §5 |
+| ~~9~~ | ~~徽章规格混用（text-[11px]、px-2）~~ ✅ 全量 text-xs / px-2.5 | ledger.vue、records 页 | §4 |
+| ~~10~~ | ~~z-index 混用（筛选 sheet z-40 与 FAB 同级）~~ ✅ sheet 升 z-50；移动 FAB 已删除（入口收敛到页头） | ledger.vue | §5 |

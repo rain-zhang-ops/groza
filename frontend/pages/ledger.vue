@@ -30,6 +30,7 @@
   import MdiFormatSize from "~icons/mdi/format-size";
   import MdiContentPaste from "~icons/mdi/content-paste";
   import MdiFormTextbox from "~icons/mdi/form-textbox";
+  import MdiDotsHorizontal from "~icons/mdi/dots-horizontal";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -131,7 +132,6 @@
 
   // ---------- 变更历史 ----------
   const historyOpen = ref(false);
-  const fabOpen = ref(false);
   const historyTitle = ref("");
   const historyLogs = ref<Array<Record<string, any>>>([]);
   const historyBusy = ref(false);
@@ -1686,7 +1686,7 @@
   }
   function diff(r: Row): number | null { return r.count === null ? null : Number(r.count) - r.qty; }
   function diffText(r: Row): string { const d = diff(r); return d === null ? "" : (d > 0 ? "+" : "") + d; }
-  function diffClass(r: Row): string { const d = diff(r); return d === null || d === 0 ? "" : d > 0 ? "text-blue-600" : "text-red-600"; }
+  function diffClass(r: Row): string { const d = diff(r); return d === null || d === 0 ? "" : d > 0 ? "text-foreground" : "text-destructive"; }
 
   function setSort(k: string) {
     if (sort.key === k) sort.dir = sort.dir === 1 ? -1 : 1;
@@ -1703,7 +1703,7 @@
   function imgUrl(r: Row): string { return r.thumb ? `/api/v1/entities/${r.id}/attachments/${r.thumb}` : ""; }
   const arrow = (k: string) => (sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : "");
   function rowClass(r: Row): string {
-    if (isTrashed(r)) return "bg-red-500/10";
+    if (isTrashed(r)) return "bg-destructive/10";
     if (isLow(r)) return "bg-amber-500/10";
     if (isSoldOut(r)) return "text-muted-foreground bg-muted/40";
     return "hover:bg-muted/50";
@@ -1853,21 +1853,19 @@
 
 <template>
   <div class="overflow-x-clip bg-background text-foreground" @touchstart.passive="onPullStart" @touchmove.passive="onPullMove" @touchend="onPullEnd">
-    <div v-if="offlineReadonly" class="bg-amber-500/15 px-3 py-1.5 text-center text-xs font-medium text-amber-700">离线只读：显示最近缓存，联网后自动更新</div>
+    <div v-if="offlineReadonly" class="bg-amber-500/15 px-3 py-1.5 text-center text-xs font-medium text-amber-600">离线只读：显示最近缓存，联网后自动更新</div>
     <div v-if="pulling" class="flex justify-center py-2"><span class="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">{{ refreshing ? "刷新中…" : "松开刷新" }}</span></div>
-    <div class="mx-auto max-w-[1700px] p-3 md:p-6" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+    <div class="mx-auto min-h-[70vh] max-w-[1700px] p-3 md:p-6" :style="safeBottom">
       <!-- 顶栏 -->
-      <header class="mb-4">
+      <header class="mb-6">
         <div class="flex flex-wrap items-center gap-2">
-          <div class="flex items-center gap-2">
-            <span class="grid h-7 w-7 place-items-center rounded-lg bg-muted text-muted-foreground"><MdiPackageVariantClosed class="h-4 w-4" /></span>
-            <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">物品台账</h1>
-          </div>
-          <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{{ filtered.length }} 款</span>
-          <span v-if="totals.low" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">
-            <span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货 {{ totals.low }}
-          </span>
-          <span v-if="totals.sold" class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">售罄 {{ totals.sold }}</span>
+          <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">物品台账</h1>
+          <span :class="badgeCls">{{ filtered.length }} 款</span>
+          <span :class="badgeCls">共 {{ Math.round(anim.qty) }} 件</span>
+          <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
+            <span class="h-1.5 w-1.5 rounded-full animate-pulse" :class="onlyLow ? 'bg-white' : 'bg-amber-500'"></span>待补货 {{ totals.low }}
+          </button>
+          <span v-if="totals.sold" :class="badgeCls">售罄 {{ totals.sold }}</span>
           <div class="ml-auto flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap">
             <!-- 桌面完整操作 -->
             <div class="hidden items-center gap-2 md:flex">
@@ -1886,7 +1884,7 @@
               <label class="flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs text-muted-foreground" title="联网搜索 1元/次，请省着用">
                 <input v-model="aiSearch" type="checkbox" class="accent-primary" /> 联网
               </label>
-              <span class="inline-block h-2 w-2 rounded-full" :class="wsOk ? 'bg-emerald-500' : 'bg-muted-foreground/40'" :title="wsOk ? '实时同步已连接' : '实时同步未连接'"></span>
+              <span class="inline-block h-2 w-2 rounded-full" :class="wsOk ? 'bg-primary' : 'bg-muted-foreground/40'" :title="wsOk ? '实时同步已连接' : '实时同步未连接'"></span>
               <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
               <button v-if="trashedCount && isOwner" :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeAll"><MdiDeleteForever class="h-4 w-4" /> 清空回收站 {{ trashedCount }}</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
@@ -1906,11 +1904,11 @@
                 <button v-if="trashedCount && isOwner" class="block w-full rounded px-2.5 py-2.5 text-left text-destructive transition hover:bg-destructive/10" @click="purgeAll"><MdiDeleteForever class="mr-1.5 inline h-4 w-4" />清空回收站（{{ trashedCount }}）</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openScan"><MdiBarcodeScan class="mr-1.5 inline h-4 w-4" />扫码</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="load"><MdiRefresh class="mr-1.5 inline h-4 w-4" />刷新数据</button>
-                <button v-if="undoLast" class="block w-full rounded px-2.5 py-2.5 text-left text-amber-600 transition hover:bg-muted" @click="undo"><MdiUndo class="mr-1.5 inline h-4 w-4" />撤销上一步</button>
+                <button v-if="undoLast" class="block w-full rounded border border-amber-400 bg-amber-500/10 px-2.5 py-2.5 text-left text-amber-600 transition hover:bg-amber-500/20" @click="undo"><MdiUndo class="mr-1.5 inline h-4 w-4" />撤销上一步</button>
                 <label class="flex items-center gap-2 rounded px-2.5 py-2.5" title="联网搜索 1 元/次，请省着用"><input v-model="aiSearch" type="checkbox" class="accent-primary" /> 联网识别</label>
               </div>
             </details>
-            <button :class="[btnPrimary, 'shrink-0 active:scale-95']" @click="pickAI"><MdiImageSearch class="h-4 w-4" /> AI 新增<span v-if="aiActive" class="ml-1 rounded-full bg-white/25 px-1.5 text-xs tabular-nums">{{ aiActive }}</span></button>
+            <button :class="[btnGhost, 'shrink-0 active:scale-95']" @click="pickAI"><MdiImageSearch class="h-4 w-4" /> AI 新增<span v-if="aiActive" class="ml-1 rounded-full bg-primary/10 px-1.5 text-xs tabular-nums">{{ aiActive }}</span></button>
             <button :class="[btnPrimary, 'shrink-0 active:scale-95']" @click="addItem"><MdiPlus class="h-4 w-4" /> 新增物品</button>
           </div>
         </div>
@@ -1926,7 +1924,7 @@
         </div>
         <div class="mt-2 max-h-44 space-y-1 overflow-auto">
           <div v-for="t in aiTasks" :key="t.id" class="flex items-center gap-2 rounded-lg bg-muted/40 px-2 py-1 text-xs">
-            <span class="h-2 w-2 shrink-0 rounded-full" :class="{ 'bg-amber-500 animate-pulse': t.status === '识别中', 'bg-muted-foreground/40': t.status === '等待中', 'bg-sky-500': t.status === '待确认', 'bg-emerald-500': t.status === '完成', 'bg-red-500': t.status === '失败', 'bg-muted-foreground/60': t.status === '已取消' }"></span>
+            <span class="h-2 w-2 shrink-0 rounded-full" :class="{ 'bg-amber-500 animate-pulse': t.status === '识别中', 'bg-muted-foreground/40': t.status === '等待中', 'bg-primary': t.status === '待确认' || t.status === '完成', 'bg-destructive': t.status === '失败', 'bg-muted-foreground/60': t.status === '已取消' }"></span>
             <span class="truncate">{{ t.label }}</span>
             <span class="ml-auto shrink-0 text-muted-foreground">{{ t.status }}<template v-if="t.msg"> · {{ t.msg }}</template></span>
             <button v-if="t.status === '待确认'" class="shrink-0 rounded px-1.5 py-0.5 text-primary transition hover:bg-primary/10" @click="reopenAIConfirm(t)">确认</button>
@@ -1981,19 +1979,10 @@
           </div>
           <div class="mt-4 flex flex-wrap justify-end gap-2">
             <button :class="[btnGhost, 'active:scale-95']" @click="aiConfirmNext">跳过 ›</button>
-            <button class="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-600 transition hover:bg-red-500/10 active:scale-95" @click="aiReject"><MdiClose class="h-4 w-4" /> 拒绝</button>
+            <button class="inline-flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-1.5 text-sm font-medium text-destructive transition hover:bg-destructive/10 active:scale-95" @click="aiReject"><MdiClose class="h-4 w-4" /> 拒绝</button>
             <button v-if="aiPending > 1" :class="[btnGhost, 'active:scale-95']" @click="aiCreateAll">全部入库</button>
             <button :class="[btnPrimary, 'active:scale-95']" @click="aiCreateOne"><MdiPlus class="h-4 w-4" /> 确认入库</button>
           </div>
-        </div>
-      </div>
-
-      <!-- 统计卡 -->
-      <div class="mb-4 grid grid-cols-1 gap-2 md:max-w-xs">
-        <div class="group relative overflow-hidden rounded-xl border bg-card p-3 transition-all hover:-translate-y-0.5 hover:shadow-md">
-          <div class="flex items-center gap-2 text-xs text-muted-foreground"><MdiPackageVariantClosed class="h-4 w-4 text-primary" />合计数量</div>
-          <div class="mt-1 text-xl font-semibold tabular-nums">{{ Math.round(anim.qty) }}</div>
-          <div class="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-primary/60 to-transparent"></div>
         </div>
       </div>
 
@@ -2107,7 +2096,7 @@
           :class="activeFilterCount ? 'border-primary bg-primary/10 text-primary' : 'bg-background'"
           @click="filterOpen = true"
         ><MdiFilterVariant class="h-5 w-5" /> 筛选
-          <span v-if="activeFilterCount" class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular-nums text-primary-foreground">{{ activeFilterCount }}</span>
+          <span v-if="activeFilterCount" class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs font-semibold tabular-nums text-primary-foreground">{{ activeFilterCount }}</span>
         </button>
         <button
           class="inline-flex h-10 shrink-0 items-center rounded-full border px-3.5 text-sm font-medium transition-all active:scale-95"
@@ -2152,9 +2141,9 @@
       </Transition>
 
       <!-- 批量差异预览 -->
-      <Transition name="fold">
+      <Transition name="sheet">
         <div v-if="batchPreview" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" @click.self="cancelBatch">
-          <div class="max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
+          <div class="sheet-panel max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
             <div class="mb-2 flex items-center gap-2">
               <span class="font-semibold">{{ batchPreview.label }}</span>
               <span class="text-xs text-muted-foreground">共 {{ batchPreview.total }} 条</span>
@@ -2178,9 +2167,9 @@
         </div>
       </Transition>
       <!-- 盘点差异报告 -->
-      <Transition name="fold">
+      <Transition name="sheet">
         <div v-if="countReport.open" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" @click.self="countReport.open = false">
-          <div class="max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
+          <div class="sheet-panel max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
             <div class="mb-2 flex items-center gap-2">
               <span class="font-semibold">盘点差异报告</span>
               <span class="text-xs text-muted-foreground">共 {{ countReport.rows.length }} 条</span>
@@ -2195,7 +2184,7 @@
                 <span class="min-w-0 flex-1 truncate">{{ d.name }}</span>
                 <span class="w-14 text-right tabular-nums text-muted-foreground">{{ d.expected }}</span>
                 <span class="w-14 text-right tabular-nums">{{ d.counted }}</span>
-                <span class="w-14 text-right font-medium tabular-nums" :class="d.diff > 0 ? 'text-blue-600' : 'text-red-600'">{{ d.diff > 0 ? "+" : "" }}{{ d.diff }}</span>
+                <span class="w-14 text-right font-medium tabular-nums" :class="d.diff > 0 ? 'text-foreground' : 'text-destructive'">{{ d.diff > 0 ? "+" : "" }}{{ d.diff }}</span>
               </div>
             </div>
             <div class="mt-4 flex items-center justify-end gap-2">
@@ -2209,17 +2198,15 @@
         <div v-if="countMode" class="mb-4 flex items-center gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
           <MdiAlertOutline class="h-5 w-5 text-amber-600" />
           <span>盘点模式：填写「实盘」，差异自动算出。</span>
-          <button class="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition hover:bg-amber-700 active:scale-95" @click="submitCount">提交盘点（{{ countChanges.length }}）</button>
+          <button :class="[btnPrimary, 'active:scale-95']" @click="submitCount">提交盘点（{{ countChanges.length }}）</button>
         </div>
       </Transition>
 
       <!-- 加载骨架 -->
-      <div v-if="loading" class="space-y-2">
-        <div v-for="i in 7" :key="i" class="h-12 overflow-hidden rounded-xl border bg-muted/40">
-          <div class="h-full w-1/3 animate-shimmer bg-gradient-to-r from-transparent via-background/60 to-transparent"></div>
-        </div>
+      <div v-if="loading" class="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <div v-for="i in 6" :key="i" :class="skeletonCls"></div>
       </div>
-      <div v-else-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-6 text-destructive">{{ err }}</div>
+      <div v-else-if="err" :class="errorCls">{{ err }}</div>
 
       <!-- 手机卡片 -->
       <TransitionGroup v-else-if="isMobile" name="card" tag="div" class="space-y-2.5">
@@ -2244,9 +2231,9 @@
               <div class="min-w-0 flex-1">
                 <div class="flex items-start gap-1.5">
                   <NuxtLink :to="`/item/${r.id}`" class="line-clamp-2 flex-1 text-base font-semibold leading-snug text-foreground"><span v-html="hl(r.name)"></span></NuxtLink>
-                  <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-medium text-red-600">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
-                  <span v-if="isLow(r)" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
-                  <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">售罄</span>
+                  <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
+                  <span v-if="isLow(r)" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
+                  <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">售罄</span>
                 </div>
                 <div class="mt-1.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
                   <button class="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
@@ -2276,15 +2263,20 @@
               </label>
             </div>
             <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showQR(r)"><MdiQrcode class="h-4 w-4" />二维码</button>
-              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" />复制</button>
-              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showHistory(r)"><MdiHistory class="h-4 w-4" />历史</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" />图片</button>
-              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="openFields(r)"><MdiFormTextbox class="h-4 w-4" />字段</button>
-              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
+              <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? '' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
                 <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
               </button>
               <button v-if="isTrashed(r) && isOwner" class="inline-flex h-9 items-center gap-1 rounded-lg border border-destructive/40 px-2.5 text-xs font-medium text-destructive transition active:scale-95 disabled:opacity-40" :disabled="saving[r.id]" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" />彻底删除</button>
+              <details class="relative">
+                <summary class="inline-flex h-9 list-none items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95"><MdiDotsHorizontal class="h-4 w-4" /></summary>
+                <div class="absolute bottom-full right-0 z-40 mb-1 w-44 origin-bottom-right rounded-lg border bg-popover p-1.5 text-sm shadow-lg animate-pop">
+                  <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="showQR(r)"><MdiQrcode class="mr-1.5 inline h-4 w-4" />二维码</button>
+                  <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="duplicateRow(r)"><MdiContentCopy class="mr-1.5 inline h-4 w-4" />复制</button>
+                  <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="showHistory(r)"><MdiHistory class="mr-1.5 inline h-4 w-4" />历史</button>
+                  <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openFields(r)"><MdiFormTextbox class="mr-1.5 inline h-4 w-4" />字段</button>
+                </div>
+              </details>
               <span class="ml-auto">更新 {{ fmtDate(r.updated) }}</span>
             </div>
           </div>
@@ -2329,16 +2321,16 @@
                 <div class="relative inline-block">
                   <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" decoding="async" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover transition hover:scale-110" @click="preview = imgUrl(r)" />
                   <button v-else class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
-                  <button v-if="r.thumb" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground shadow" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
+                  <button v-if="r.thumb" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
                 </div>
               </td>
               <td :class="cellPad">
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
                   <input v-model="r.name" class="w-40 min-w-0 flex-1 rounded-md border bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-ring/40" @change="setName(r)" />
                   <NuxtLink :to="`/item/${r.id}`" class="text-primary hover:underline" title="打开详情"><MdiOpenInNew class="h-3.5 w-3.5" /></NuxtLink>
-                  <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-medium text-red-600">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
-                  <span v-if="isLow(r)" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
-                  <span v-else-if="isSoldOut(r)" class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">售罄</span>
+                  <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
+                  <span v-if="isLow(r)" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
+                  <span v-else-if="isSoldOut(r)" class="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">售罄</span>
                 </div>
               </td>
               <td v-if="cols.updated" :class="[cellPad, 'whitespace-nowrap text-muted-foreground']" :title="r.updated">{{ fmtDate(r.updated) }}</td>
@@ -2384,7 +2376,7 @@
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="变更历史" @click="showHistory(r)"><MdiHistory class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="图片（多图）" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="自定义字段" @click="openFields(r)"><MdiFormTextbox class="h-4 w-4" /></button>
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? 'border-emerald-300 text-emerald-600' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
+                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? '' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
                     <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
                   </button>
                   <button v-if="isTrashed(r) && isOwner" class="grid h-7 w-7 place-items-center rounded-md border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="彻底删除（不可恢复）" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" /></button>
@@ -2393,7 +2385,7 @@
             </tr>
           </tbody>
         </table>
-        <div v-if="!sorted.length" class="p-10 text-center text-muted-foreground">
+        <div v-if="!sorted.length" :class="emptyCls">
           <MdiPackageVariantClosed class="mx-auto mb-2 h-8 w-8 opacity-40" />
           没有匹配的物品
         </div>
@@ -2401,62 +2393,62 @@
 
       <!-- 分页 -->
       <div v-if="sorted.length" class="mt-4 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm">
-        <select v-model.number="pageSize" class="rounded-lg border bg-background px-2 py-1.5 text-sm" @change="gotoPage(1)">
+        <select v-model.number="pageSize" class="hidden rounded-lg border bg-background px-2 py-1.5 text-sm md:block" @change="gotoPage(1)">
           <option :value="20">20/页</option>
           <option :value="50">50/页</option>
           <option :value="100">100/页</option>
-          <option :value="100000">全部</option>
+          <option v-if="!isMobile" :value="100000">全部</option>
         </select>
-        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page <= 1" @click="gotoPage(1)">首页</button>
+        <button class="hidden h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40 md:block" :disabled="page <= 1" @click="gotoPage(1)">首页</button>
         <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page <= 1" @click="gotoPage(page - 1)">上一页</button>
         <span class="px-2 tabular-nums text-muted-foreground">{{ page }} / {{ totalPages }} · 共 {{ sorted.length }} 条</span>
         <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page >= totalPages" @click="gotoPage(page + 1)">下一页</button>
-        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page >= totalPages" @click="gotoPage(totalPages)">末页</button>
+        <button class="hidden h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40 md:block" :disabled="page >= totalPages" @click="gotoPage(totalPages)">末页</button>
       </div>
     </div>
 
     <!-- 手机筛选抽屉 -->
     <Transition name="sheet">
-      <div v-if="filterOpen" class="fixed inset-0 z-40 flex items-end bg-black/40 backdrop-blur-[1px]" @click.self="filterOpen = false">
+      <div v-if="filterOpen" class="fixed inset-0 z-50 flex items-end bg-black/40 backdrop-blur-[1px]" @click.self="filterOpen = false">
         <div class="sheet-panel flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl border-t bg-card shadow-2xl">
           <div class="relative flex items-center justify-between border-b px-4 pb-3 pt-4">
             <span class="absolute left-1/2 top-2 h-1 w-10 -translate-x-1/2 rounded-full bg-muted-foreground/30"></span>
             <span class="mt-2 font-semibold">筛选<span v-if="activeFilterCount" class="ml-1.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{{ activeFilterCount }}</span></span>
             <button :class="[btnPrimary, 'mt-2 active:scale-95']" @click="filterOpen = false">完成</button>
           </div>
-          <div class="flex-1 space-y-4 overflow-auto p-4 text-base" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+          <div class="flex-1 space-y-4 overflow-auto p-4 text-base" :style="safeBottom">
             <label class="block text-xs text-muted-foreground">品牌
-              <select v-model="filter.brand" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="filter.brand" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in brands" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">尺寸
-              <select v-model="filter.size" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="filter.size" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in sizes" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">规格
-              <select v-model="filter.spec" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="filter.spec" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in specs" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">颜色
-              <select v-model="filter.color" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="filter.color" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in colors" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">材质
-              <select v-model="filter.material" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="filter.material" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in materials" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">系列
-              <select v-model="filter.series" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="filter.series" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in seriesOptions" :key="v" :value="v">{{ v }}</option>
               </select>
             </label>
             <label class="block text-xs text-muted-foreground">数据完整性
-              <select v-model="dataFilter" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="dataFilter" :class="inputClsLg">
                 <option value="">全部</option>
                 <option value="low">待补货</option>
                 <option value="trashed">待删除（已标记）</option>
@@ -2470,9 +2462,25 @@
               </select>
             </label>
             <label v-for="o in extraFilterOptions" :key="o.name" class="block text-xs text-muted-foreground">{{ o.name }}
-              <select v-model="extraFilters[o.name]" class="mt-1 w-full rounded-lg border bg-background px-3 py-2.5 text-base">
+              <select v-model="extraFilters[o.name]" :class="inputClsLg">
                 <option value="">全部</option><option v-for="v in o.options" :key="v" :value="v">{{ v }}</option>
               </select>
+            </label>
+            <label class="block text-xs text-muted-foreground">排序
+              <span class="flex items-center gap-2">
+                <select v-model="sort.key" :class="[inputClsLg, 'flex-1']">
+                  <option value="name">名称</option>
+                  <option value="qty">数量</option>
+                  <option value="purchase">进价</option>
+                  <option value="sell">售价</option>
+                  <option value="safety">安全库存</option>
+                  <option value="updated">更新时间</option>
+                  <option value="brand">品牌</option>
+                  <option value="size">尺寸</option>
+                  <option value="low">低库存优先</option>
+                </select>
+                <button type="button" :class="[btnGhost, 'mt-1 shrink-0 justify-center px-3 py-2.5 text-base active:scale-95']" :title="sort.dir === 1 ? '升序' : '降序'" @click="setSort(sort.key)">{{ sort.dir === 1 ? "↑" : "↓" }}</button>
+              </span>
             </label>
             <label class="flex items-center gap-2 text-base"><input v-model="countMode" type="checkbox" class="h-5 w-5 accent-primary" /> 盘点模式</label>
             <label class="flex items-center gap-2 text-base"><input v-model="showSummary" type="checkbox" class="h-5 w-5 accent-primary" /> 显示汇总</label>
@@ -2504,8 +2512,8 @@
 
     <!-- 新增物品 -->
     <Transition name="fade">
-      <div v-if="addOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="addOpen = false">
-        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="addOpen" :class="drawerWrap" @click.self="addOpen = false">
+        <div :class="drawerPanel" :style="safeBottom">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-display text-lg font-medium">新增物品</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="addOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2579,8 +2587,8 @@
 
     <!-- 数据体检 -->
     <Transition name="fade">
-      <div v-if="qualityOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="qualityOpen = false">
-        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="qualityOpen" :class="drawerWrap" @click.self="qualityOpen = false">
+        <div :class="drawerPanel" :style="safeBottom">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-display text-lg font-medium">数据体检 · {{ qualityStats.total }} 款</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="qualityOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2593,12 +2601,12 @@
             <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noBrand')"><span>缺品牌</span><b class="tabular-nums" :class="qualityStats.noBrand ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noBrand }}</b></button>
             <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSize')"><span>缺尺寸</span><b class="tabular-nums" :class="qualityStats.noSize ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSize }}</b></button>
             <button class="flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('noSpec')"><span>缺规格</span><b class="tabular-nums" :class="qualityStats.noSpec ? 'text-amber-600' : 'text-muted-foreground'">{{ qualityStats.noSpec }}</b></button>
-            <button v-if="(uiOptions.required || []).length" class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('required')"><span>缺必填字段</span><b class="tabular-nums" :class="qualityStats.noRequired ? 'text-red-600' : 'text-muted-foreground'">{{ qualityStats.noRequired }}</b></button>
-            <button class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('dup')"><span>重复名称（涉及款数）</span><b class="tabular-nums" :class="qualityStats.dupCount ? 'text-red-600' : 'text-muted-foreground'">{{ qualityStats.dupCount }}</b></button>
+            <button v-if="(uiOptions.required || []).length" class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('required')"><span>缺必填字段</span><b class="tabular-nums" :class="qualityStats.noRequired ? 'text-destructive' : 'text-muted-foreground'">{{ qualityStats.noRequired }}</b></button>
+            <button class="col-span-2 flex items-center justify-between rounded-lg border px-3 py-2.5 hover:bg-muted" @click="applyQuality('dup')"><span>重复名称（涉及款数）</span><b class="tabular-nums" :class="qualityStats.dupCount ? 'text-destructive' : 'text-muted-foreground'">{{ qualityStats.dupCount }}</b></button>
           </div>
           <p v-if="qualityStats.dupNames.length" class="mt-2 truncate text-xs text-muted-foreground">重复示例：{{ qualityStats.dupNames.slice(0, 6).join("、") }}</p>
           <div v-if="dupGroups.length" class="mt-4 border-t pt-3">
-            <div class="mb-1.5 text-sm font-medium text-red-600">重复名称（{{ dupGroups.length }} 组）· 可一键“保留最新、其余标记删除”</div>
+            <div class="mb-1.5 text-sm font-medium text-destructive">重复名称（{{ dupGroups.length }} 组）· 可一键“保留最新、其余标记删除”</div>
             <div class="max-h-52 space-y-1 overflow-auto">
               <div v-for="g in dupGroups" :key="g.name" class="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm">
                 <span class="min-w-0 flex-1 truncate">{{ g.name }}</span>
@@ -2614,8 +2622,8 @@
 
     <!-- 批量导入 -->
     <Transition name="fade">
-      <div v-if="importOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="importOpen = false">
-        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="importOpen" :class="drawerWrap" @click.self="importOpen = false">
+        <div :class="drawerPanel" :style="safeBottom">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-display text-lg font-medium">批量导入</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="importOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2640,7 +2648,7 @@
     <!-- 二维码 -->
     <Transition name="fade">
       <div v-if="qrOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="qrOpen = false">
-        <div class="w-full max-w-xs rounded-2xl bg-card p-4 text-center shadow-2xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+        <div class="w-full max-w-xs rounded-2xl bg-card p-4 text-center shadow-2xl" :style="safeBottom">
           <div class="mb-2 flex items-center justify-between">
             <span class="text-sm font-semibold">二维码标签</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="qrOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2656,22 +2664,10 @@
       </div>
     </Transition>
 
-    <!-- 移动 FAB -->
-    <div v-if="isMobile" class="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2" style="padding-bottom: env(safe-area-inset-bottom)">
-      <Transition name="fold">
-        <div v-if="fabOpen" class="flex flex-col items-end gap-2">
-          <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; pickAI()"><MdiImageSearch class="h-4 w-4" /> 拍照新增</button>
-          <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; addItem()"><MdiPlus class="h-4 w-4" /> 手动新增</button>
-          <button class="inline-flex items-center gap-1 rounded-full border bg-card px-3 py-2 text-sm shadow-md active:scale-95" @click="fabOpen = false; openScan()"><MdiBarcodeScan class="h-4 w-4" /> 扫码</button>
-        </div>
-      </Transition>
-      <button class="grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg transition active:scale-95" @click="fabOpen = !fabOpen"><MdiPlus class="h-6 w-6 transition-transform" :class="fabOpen ? 'rotate-45' : ''" /></button>
-    </div>
-
     <!-- 变更历史 -->
     <Transition name="fade">
-      <div v-if="historyOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="historyOpen = false">
-        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="historyOpen" :class="drawerWrap" @click.self="historyOpen = false">
+        <div :class="drawerPanel" :style="safeBottom">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-display text-lg font-medium">变更历史 · {{ historyTitle }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="historyOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2690,8 +2686,8 @@
 
     <!-- 多图 -->
     <Transition name="fade">
-      <div v-if="galleryOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="closeGallery">
-        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="galleryOpen" :class="drawerWrap" @click.self="closeGallery">
+        <div :class="drawerPanel" :style="safeBottom">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-display text-lg font-medium">图片 · {{ galleryTitle }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="closeGallery"><MdiClose class="h-5 w-5" /></button>
@@ -2706,10 +2702,10 @@
           <div class="grid grid-cols-3 gap-2">
             <div v-for="a in galleryImgs" :key="a.id" class="relative overflow-hidden rounded-lg border">
               <img :src="attUrl(a.id)" class="h-28 w-full object-cover" alt="" />
-              <button v-if="!a.primary" class="absolute left-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white" @click="setPrimaryImg(a)">设封面</button>
-              <span v-else class="absolute left-1 top-1 rounded-md bg-emerald-600 px-1.5 py-0.5 text-[11px] text-white">封面</span>
+              <button v-if="!a.primary" class="absolute left-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-white" @click="setPrimaryImg(a)">设封面</button>
+              <span v-else class="absolute left-1 top-1 rounded-md bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">封面</span>
               <button class="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white" @click="delGalleryImg(a)"><MdiDeleteForever class="h-3.5 w-3.5" /></button>
-              <select :value="slotKeyOf(a)" class="absolute inset-x-1 bottom-1 rounded-md border-0 bg-black/70 px-1 py-0.5 text-[11px] text-white outline-none" @change="setSlot(a, ($event.target as HTMLSelectElement).value)">
+              <select :value="slotKeyOf(a)" class="absolute inset-x-1 bottom-1 rounded-md border-0 bg-black/70 px-1 py-0.5 text-xs text-white outline-none" @change="setSlot(a, ($event.target as HTMLSelectElement).value)">
                 <option value="">未分类</option>
                 <option v-for="s in mediaSlots" :key="s.key" :value="s.key">{{ s.name }}</option>
               </select>
@@ -2723,8 +2719,8 @@
 
     <!-- 自定义字段 -->
     <Transition name="fade">
-      <div v-if="fieldsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="fieldsOpen = false">
-        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="fieldsOpen" :class="drawerWrap" @click.self="fieldsOpen = false">
+        <div :class="drawerPanel" :style="safeBottom">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-display text-lg font-medium">自定义字段 · {{ fieldsItem?.name }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="fieldsOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2756,11 +2752,9 @@
 <style scoped>
   @keyframes floatIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes popIn { 0% { opacity: .4; transform: scale(.94); } 60% { transform: scale(1.03); } 100% { opacity: 1; transform: scale(1); } }
-  @keyframes shimmer { 100% { transform: translateX(300%); } }
   @keyframes rowFlash { 0% { background-color: hsl(var(--primary) / .22); } 100% { background-color: transparent; } }
 
   .animate-pop { animation: popIn .22s ease-out; }
-  .animate-shimmer { animation: shimmer 1.2s infinite; }
   .row-flash { animation: rowFlash .9s ease-out; }
 
   .table-scroll { scrollbar-width: thin; scrollbar-color: hsl(var(--muted-foreground) / .5) transparent; }
