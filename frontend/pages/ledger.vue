@@ -1889,10 +1889,10 @@
           <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">物品台账</h1>
           <span :class="badgeCls">{{ filtered.length }} 款</span>
           <span :class="badgeCls">共 {{ Math.round(anim.qty) }} 件</span>
-          <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
+          <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
             <span class="h-1.5 w-1.5 rounded-full animate-pulse" :class="onlyLow ? 'bg-white' : 'bg-amber-500'"></span>待补货 {{ totals.low }}
           </button>
-          <button v-if="soldCount" class="inline-flex items-center gap-1 transition active:scale-95 disabled:opacity-50" :class="hideSoldOut ? badgeCls : 'rounded-full border border-primary bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary'" :disabled="dataFilter === 'soldout'" :title="dataFilter === 'soldout' ? '当前正在查看售罄物品' : ''" @click="hideSoldOut = !hideSoldOut"><MdiEyeOffOutline v-if="hideSoldOut" class="h-3.5 w-3.5" /><MdiEyeOutline v-else class="h-3.5 w-3.5" />售罄 {{ soldCount }}</button>
+          <button v-if="soldCount" class="inline-flex items-center gap-1 transition active:scale-95 disabled:opacity-50" :class="hideSoldOut ? [badgeCls, 'py-1'] : 'rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary'" :disabled="dataFilter === 'soldout'" :title="dataFilter === 'soldout' ? '当前正在查看售罄物品' : ''" @click="hideSoldOut = !hideSoldOut"><MdiEyeOffOutline v-if="hideSoldOut" class="h-3.5 w-3.5" /><MdiEyeOutline v-else class="h-3.5 w-3.5" />售罄 {{ soldCount }}</button>
           <div class="ml-auto flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap">
             <!-- 桌面完整操作 -->
             <div class="hidden items-center gap-2 md:flex">
@@ -2263,7 +2263,7 @@
                   <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">售罄</span>
                 </div>
                 <div class="mt-1.5 text-xs text-muted-foreground">
-                  <button class="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
+                  <button class="rounded-md bg-muted px-2 py-1 text-muted-foreground transition active:scale-95" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
                 </div>
                 <div v-if="attrLine(r)" class="mt-1 truncate text-xs text-muted-foreground">{{ attrLine(r) }}</div>
                 <div v-if="(r.purchase ?? 0) > 0 || (r.sell ?? 0) > 0" class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
