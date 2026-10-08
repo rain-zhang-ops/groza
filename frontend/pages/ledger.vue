@@ -1307,6 +1307,21 @@
     const ok = await putFields(r, { 安全库存: v });
     if (ok) { r.safety = v; markSaved(r.id); recordUndo("安全库存", [{ row: r, field: "safety", prev }]); flash("已保存安全库存"); }
   }
+  const safetyEditing = reactive<Record<string, boolean>>({});
+  function editSafety(r: Row) { snapshot(r); safetyEditing[r.id] = true; }
+  async function doneSafetyEdit(r: Row) { await setSafety(r); safetyEditing[r.id] = false; }
+  function focusEl(el: Element | null) { (el as HTMLInputElement | null)?.focus?.(); }
+
+  // 手机卡片属性行：点分隔纯文本，只拼接有值的项
+  function attrLine(r: Row): string {
+    const parts = [r.brand, r.size, r.spec, r.color, r.material].filter(Boolean) as string[];
+    for (const f of extraFields.value) {
+      const v = r.extra[f.name];
+      if (!v) continue;
+      parts.push(f.type === "boolean" ? `${f.name} ✓` : `${f.name} ${v}`);
+    }
+    return parts.join(" · ");
+  }
 
   // ---------- 计算 ----------
   const uniq = (key: keyof Row) => [...new Set(rows.value.map(r => String(r[key] ?? "")).filter(Boolean))].sort();
@@ -2217,7 +2232,7 @@
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-muted-foreground text-white transition active:scale-90" @click="pickPhoto(r); closeSwipe(r)"><MdiCamera class="h-5 w-5" /></button>
           </div>
           <div
-            :class="[rowClass(r), isSaved(r) ? 'row-flash' : '', sel[r.id] ? 'ring-2 ring-inset ring-primary' : '']"
+            :class="[rowClass(r), isSaved(r) ? 'row-flash' : '', sel[r.id] ? 'ring-2 ring-inset ring-primary' : '', isTrashed(r) || isSoldOut(r) ? 'opacity-60' : '', !isTrashed(r) && !isSoldOut(r) && isLow(r) ? 'border-l-2 border-l-amber-400' : '']"
             :style="cardStyle(r)"
             class="relative bg-card p-3"
             style="touch-action: pan-y"
@@ -2235,32 +2250,24 @@
                   <span v-if="isLow(r)" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
                   <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">售罄</span>
                 </div>
-                <div class="mt-1.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                <div class="mt-1.5 text-xs text-muted-foreground">
                   <button class="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
-                  <span v-if="r.brand" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.brand }}</span>
-                  <span v-if="r.size" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.size }}</span>
-                  <span v-if="r.spec" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.spec }}</span>
-                  <span v-if="r.color" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.color }}</span>
-                  <span v-if="r.material" class="rounded-md bg-muted px-1.5 py-0.5">{{ r.material }}</span>
-                  <template v-for="f in extraFields" :key="'m' + f.name">
-                    <span v-if="r.extra[f.name]" class="rounded-md bg-muted px-1.5 py-0.5">{{ f.name }} {{ f.type === 'boolean' ? '✓' : r.extra[f.name] }}</span>
-                  </template>
                 </div>
-                <div class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
-                  <span>进 <b class="font-medium text-foreground">¥{{ fmt(r.purchase) }}</b></span>
-                  <span>售 <b class="font-medium text-foreground">¥{{ fmt(r.sell) }}</b></span>
+                <div v-if="attrLine(r)" class="mt-1 truncate text-xs text-muted-foreground">{{ attrLine(r) }}</div>
+                <div v-if="(r.purchase ?? 0) > 0 || (r.sell ?? 0) > 0" class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
+                  <span v-if="(r.purchase ?? 0) > 0">进 <b class="font-medium text-foreground">¥{{ fmt(r.purchase) }}</b></span>
+                  <span v-if="(r.sell ?? 0) > 0">售 <b class="font-medium text-foreground">¥{{ fmt(r.sell) }}</b></span>
                 </div>
               </div>
             </div>
             <div class="mt-3 flex items-center gap-2">
               <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
-                <button class="grid h-11 w-11 place-items-center text-xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
-                <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-14 border-x bg-background text-center text-lg font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
-                <button class="grid h-11 w-11 place-items-center text-xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
+                <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
+                <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+                <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
               </div>
-              <label class="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">安全
-                <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setSafety(r)" />
-              </label>
+              <button v-if="!safetyEditing[r.id]" class="ml-auto px-2 py-2 text-xs text-muted-foreground transition active:scale-95" @click="editSafety(r)">安全 {{ r.safety ?? "＋" }}</button>
+              <input v-else v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="ml-auto h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :ref="focusEl" @blur="doneSafetyEdit(r)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
             </div>
             <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" />图片</button>
@@ -2277,7 +2284,7 @@
                   <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="openFields(r)"><MdiFormTextbox class="mr-1.5 inline h-4 w-4" />字段</button>
                 </div>
               </details>
-              <span class="ml-auto">更新 {{ fmtDate(r.updated) }}</span>
+              <span class="ml-auto text-muted-foreground/70">更新 {{ fmtDate(r.updated) }}</span>
             </div>
           </div>
         </div>

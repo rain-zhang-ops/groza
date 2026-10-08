@@ -98,7 +98,7 @@
             @click="toggleHideEmpty"
           >
             <span class="relative h-4 w-7 shrink-0 rounded-full transition-colors" :class="hideEmpty ? 'bg-primary' : 'bg-muted-foreground/30'">
-              <span class="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform" :class="hideEmpty ? 'translate-x-3' : ''"></span>
+              <span class="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-primary-foreground transition-transform" :class="hideEmpty ? 'translate-x-3' : ''"></span>
             </span>
             隐藏 0 项
           </button>

@@ -473,3 +473,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **自研页统一**：计数徽章/信息 chip 一律 `bg-muted text-muted-foreground`（原 `bg-primary/10`）；页头 `mb-4`→`mb-6`；所有带边框容器去 `shadow-sm`（无边框的购物车行补 `border`）；tasks 队列卡片 hover 改 `border-foreground/25`。
 - **交互基调**（`patch_motion` 追加 main.css，哨兵 `groza-motion`）：全局 a/button/input 150ms `cubic-bezier(0.16,1,0.3,1)` 过渡、8px 细滚动条（hover 加深）、`::selection` 墨色 12%。
 - **清理**：废弃 nav-collapsible-trigger-hidden / nav-collapsible-row-minw 两个失效补丁（v2 模板已无 Collapsible）；`rep()` 支持 `new=""` 的删除型替换（sidebar-logo-rm）。
+
+### 台账页信息层级重排（7）
+- **卡片瘦身**：操作行 6 按钮收至「图片/标记删除/⋯」（二维码/复制/历史/字段进 ⋯ 上弹菜单）；「合计数量」统计卡删除并入页头徽章（N 款/共 N 件/售罄 N）；双 primary 收敛为「新增物品」唯一主按钮，「AI 新增」降 ghost；移动 FAB 删除（与页头重复且遮挡内容）。
+- **内容主角化**：数量为卡片视觉焦点（步进器中间 text-xl font-semibold，−/+ 加宽 w-12 text-2xl）；进售价格双 0 时整行不渲染；属性 chip 行改点分隔纯文本（库位保留可点 chip）；安全库存低频化——默认「安全 N」小字按钮，点开才变输入框（blur/Enter 保存收回，:ref 函数聚焦替代 autofocus）。
+- **状态驱动视觉**：待删除/售罄整卡 opacity-60 退到背景层；低库存卡左缘 border-l-2 border-l-amber-400 边条（优先级 待删除 > 售罄 > 低库存）；页头「待补货」徽章可点击切换 onlyLow 筛选（激活实心 amber）。
+- **标准化销项**（ui-standard.md 差距 #3–#10）：裸色全量 token 化（destructive/foreground）、徽章统一 text-xs/px-2.5、抽屉抽 drawerWrap/drawerPanel/safeBottom 常量、筛选 sheet 下拉换 inputClsLg（text-base 防 iOS 缩放）、骨架/error/empty 换共享常量、底部弹层 Transition 统一 sheet、筛选 sheet z-40→z-50。
+- **交互补全**：移动筛选 sheet 新增排序区块（9 键 + ↑↓ 方向，复用桌面 sort 状态）；分页条移动端只留 上一页/x/y/下一页，「全部=100000」仅桌面。
+- **深色巡检**：tasks 开关滑块 bg-white 改 bg-primary-foreground（随主题反色，修深色下滑块隐形）。
