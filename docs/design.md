@@ -487,3 +487,10 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **进出页**（intake/outbound）：补 loading 骨架/error 重试/empty 空态三态；表单与明细输入全量 text-base 防 iOS 缩放；页头互跳链接换 btnGhost；触控目标 ≥36px；出库保存条抬高 `calc(3.75rem+safe-area)` 修被 Dock 遮挡（根容器 padding-bottom 同步升 8rem）；删除 rollback/dt 等死代码。
 - **记录/单据页**（intake-records/outbound-records/documents）：primary 主入口统一最右（去入库/去出库）；日期输入 h-11 text-base；回滚确认 window.confirm → 居中确认弹窗；flash 去 toast/alert 双轨改页内 msg；筛选区加「重置」；徽章/骨架/错误/空态全量换 badgeCls/skeletonCls/errorCls/emptyCls；chip px-2 残留清为 px-2.5；documents 补 primary「去入库」、切 kind Tab 重置全部筛选。
 - **配置页**（collection/fields、ui-options）：shadcn Button 全换 btnPrimary/btnGhost 原生按钮（32px 触控问题解决）；保存中 disabled 防重复提交；ui-options 加载失败禁用保存 + errorCls 重试（防空白表单清空线上配置）；textarea/键/正则/标签输入全量 text-base；删属性/槽位/恢复默认/回滚版本全部走确认弹窗；已建成字段键输入锁定。
+
+### WebSocket 与 bfcache 共处（9）
+- **问题**：页面被浏览器收进前进/后退缓存（bfcache）时，浏览器强杀挂着的 WebSocket 并在控制台刷 `WebSocket connection ... failed: Page entered Back-Forward Cache` + `websocket error Event`；恢复后旧代码也不会立即重连，实时事件断流。台账页同时存在两条连接（全局 `use-server-events` 带 tenant 参数 + ledger.vue 自带裸连接），报错翻倍。
+- **方案**：注入定制 `frontend/composables/use-server-events.ts` 覆盖上游同名文件（rebuild.sh CUSTOM_FILES/cp 已登记）；ledger.vue 自带连接同步处理。
+- **生命周期**：`pagehide` 主动关闭连接并清空回调（浏览器无需代杀，控制台从此干净）；`pageshow(persisted)` / `visibilitychange=visible` / `online` 时检测 readyState，死连接立即重连并重置退避（不等 backoff）；`onerror` 降为 debug（错误后必有 close，重连统一由 onclose 安排）。
+- **防重复**：connect 前检查 OPEN/CONNECTING；恢复路径复用既有 `scheduleReconnect` 指数退避（1s→30s 封顶）。
+- **验证**：/tmp/bfcache-test.py（Playwright + init_script 打 docId/pageshow 标记）；测试环境因自签证书 SW 等因素不进 bfcache，降级判定通过——离开再返回零 bfcache/WS 报错、WS 自动重连成功。

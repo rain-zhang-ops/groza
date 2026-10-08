@@ -1154,6 +1154,9 @@
     syncOq();
     window.addEventListener("hb:offline-queue", syncOq);
     connectWS();
+    window.addEventListener("pagehide", onWSPageHide);
+    window.addEventListener("pageshow", onWSPageShow);
+    document.addEventListener("visibilitychange", onWSVisChange);
     try { bigFont.value = localStorage.getItem("groza.bigfont") === "1"; applyBigFont(); } catch (_e) { /* ignore */ }
     const savedCols = localStorage.getItem("hb.ledger.cols");
     if (savedCols) { try { Object.assign(cols, JSON.parse(savedCols)); } catch (_e) { /* ignore */ } }
@@ -1169,10 +1172,12 @@
   });
   onBeforeUnmount(() => {
     window.removeEventListener("hb:offline-queue", syncOq);
+    window.removeEventListener("pagehide", onWSPageHide);
+    window.removeEventListener("pageshow", onWSPageShow);
+    document.removeEventListener("visibilitychange", onWSVisChange);
     closeScan();
     if (notifyTimer) window.clearInterval(notifyTimer);
-    if (ws) { ws.onclose = null; ws.close(); }
-    if (wsRetry) window.clearTimeout(wsRetry);
+    closeWSForFreeze();
     if (wsRefresh) window.clearTimeout(wsRefresh);
     if (aiConfirm.value) { URL.revokeObjectURL(aiConfirm.value.url); aiConfirm.value = null; }
   });
@@ -1843,6 +1848,25 @@
       ws.onerror = () => { wsOk.value = false; };
     } catch (_e) { /* 忽略 */ }
   }
+  function closeWSForFreeze() {
+    // 页面进 bfcache/卸载前主动关闭，避免浏览器强杀并在控制台报错
+    if (wsRetry) { window.clearTimeout(wsRetry); wsRetry = undefined; }
+    if (ws) {
+      ws.onopen = null; ws.onclose = null; ws.onerror = null; ws.onmessage = null;
+      try { ws.close(); } catch (_e) { /* 忽略 */ }
+      ws = null;
+    }
+    wsOk.value = false;
+  }
+  function resumeWS() {
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+    ws = null;
+    if (wsRetry) { window.clearTimeout(wsRetry); wsRetry = undefined; }
+    connectWS();
+  }
+  function onWSPageHide() { closeWSForFreeze(); }
+  function onWSPageShow(e: PageTransitionEvent) { if (e.persisted) resumeWS(); }
+  function onWSVisChange() { if (document.visibilityState === "visible") resumeWS(); }
 
   async function batchLoc() {
     if (!batch.loc) { flash("选分类"); return; }
