@@ -2507,8 +2507,8 @@
 
     <!-- 新增物品 -->
     <Transition name="fade">
-      <div v-if="addOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" @click.self="addOpen = false">
-        <div class="max-h-[92vh] w-full max-w-md overflow-auto rounded-t-2xl border bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="addOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="addOpen = false">
+        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-semibold">新增物品</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="addOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2582,8 +2582,8 @@
 
     <!-- 数据体检 -->
     <Transition name="fade">
-      <div v-if="qualityOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="qualityOpen = false">
-        <div class="max-h-[92vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="qualityOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="qualityOpen = false">
+        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-semibold">数据体检 · {{ qualityStats.total }} 款</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="qualityOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2617,8 +2617,8 @@
 
     <!-- 批量导入 -->
     <Transition name="fade">
-      <div v-if="importOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="importOpen = false">
-        <div class="max-h-[92vh] w-full max-w-2xl overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="importOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="importOpen = false">
+        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-semibold">批量导入</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="importOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2673,8 +2673,8 @@
 
     <!-- 变更历史 -->
     <Transition name="fade">
-      <div v-if="historyOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="historyOpen = false">
-        <div class="max-h-[88vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="historyOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="historyOpen = false">
+        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-semibold">变更历史 · {{ historyTitle }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="historyOpen = false"><MdiClose class="h-5 w-5" /></button>
@@ -2693,8 +2693,8 @@
 
     <!-- 多图 -->
     <Transition name="fade">
-      <div v-if="galleryOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="closeGallery">
-        <div class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="galleryOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="closeGallery">
+        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-semibold">图片 · {{ galleryTitle }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="closeGallery"><MdiClose class="h-5 w-5" /></button>
@@ -2726,8 +2726,8 @@
 
     <!-- 自定义字段 -->
     <Transition name="fade">
-      <div v-if="fieldsOpen" class="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" @click.self="fieldsOpen = false">
-        <div class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-t-2xl bg-card p-4 shadow-2xl sm:rounded-xl" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
+      <div v-if="fieldsOpen" class="fixed inset-0 z-50 flex justify-end bg-black/40" @click.self="fieldsOpen = false">
+        <div class="h-full w-full max-w-md overflow-auto bg-card p-5 shadow-2xl sm:max-w-lg" style="padding-bottom: calc(1rem + env(safe-area-inset-bottom))">
           <div class="mb-3 flex items-center justify-between">
             <span class="font-semibold">自定义字段 · {{ fieldsItem?.name }}</span>
             <button class="rounded-lg p-1 hover:bg-muted" @click="fieldsOpen = false"><MdiClose class="h-5 w-5" /></button>
