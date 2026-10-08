@@ -1,7 +1,6 @@
 <script setup lang="ts">
   const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
   import { toast } from "@/components/ui/sonner";
-  import { Button } from "@/components/ui/button";
   import MdiPlus from "~icons/mdi/plus";
   import MdiDelete from "~icons/mdi/delete";
   import MdiArrowUp from "~icons/mdi/arrow-up";
@@ -53,6 +52,8 @@
   const saving = ref(false);
   const err = ref("");
   const isOwner = ref(true);
+  const builtKeys = ref<Set<string>>(new Set());
+  const confirmDlg = ref<{ text: string; action: () => void } | null>(null);
 
   async function loadMe() {
     try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
@@ -64,7 +65,9 @@
   }
   async function restoreVersion(v: number) {
     if (!isOwner.value) { toast.error("仅管理员可回滚配置"); return; }
-    if (!window.confirm(`恢复到配置 v${v}？（将生成新版本，可再次回滚）`)) return;
+    confirmDlg.value = { text: `恢复到配置 v${v}？（将生成新版本，可再次回滚）`, action: () => doRestore(v) };
+  }
+  async function doRestore(v: number) {
     restoring.value = v;
     try {
       const r = await $fetch<Record<string, any>>("/api/v1/gx/config/restore", { method: "POST", body: { version: v } });
@@ -86,19 +89,26 @@
       cfg.media = { ...JSON.parse(JSON.stringify(DEFAULT.media)), ...(cfg.media || {}) };
       cfg.organization = { ...JSON.parse(JSON.stringify(DEFAULT.organization)), ...(cfg.organization || {}) };
       cfg.location = { ...JSON.parse(JSON.stringify(DEFAULT.location)), ...(cfg.location || {}), shelf: { ...DEFAULT.location.shelf, ...((cfg.location || {}).shelf || {}) } };
+      builtKeys.value = new Set((cfg.attributes || []).map((a: any) => a.key));
     } catch (e) { err.value = "加载失败：" + ((e as Error)?.message ?? String(e)); }
     finally { loading.value = false; }
   }
 
   function addAttr() { cfg.attributes.push({ key: genKey(), name: "", type: "text", required: false, show_column: true, filterable: true, sortable: false, unit: null, options: [] }); }
-  function delAttr(i: number) { cfg.attributes.splice(i, 1); }
+  function delAttr(i: number) {
+    const a = cfg.attributes[i];
+    confirmDlg.value = { text: `删除属性「${a?.name || a?.key || "未命名"}」？存量物品将失去该字段映射（保存后生效）。`, action: () => cfg.attributes.splice(i, 1) };
+  }
   function moveAttr(i: number, d: number) {
     const j = i + d; if (j < 0 || j >= cfg.attributes.length) return;
     [cfg.attributes[i], cfg.attributes[j]] = [cfg.attributes[j], cfg.attributes[i]];
     cfg.attributes = [...cfg.attributes];
   }
   function addSlot() { cfg.media.slots.push({ key: genKey(), name: "", required: false, multiple: false }); }
-  function delSlot(i: number) { cfg.media.slots.splice(i, 1); }
+  function delSlot(i: number) {
+    const s = cfg.media.slots[i];
+    confirmDlg.value = { text: `删除槽位「${s?.name || s?.key || "未命名"}」？已上传的对应图片将失去槽位映射（保存后生效）。`, action: () => cfg.media.slots.splice(i, 1) };
+  }
   function moveSlot(i: number, d: number) {
     const j = i + d; if (j < 0 || j >= cfg.media.slots.length) return;
     [cfg.media.slots[i], cfg.media.slots[j]] = [cfg.media.slots[j], cfg.media.slots[i]];
@@ -106,6 +116,9 @@
   function addTag() { if (cfg.organization.tagGroup.options.length < 60) cfg.organization.tagGroup.options.push(""); }
   function delTag(i: number) { cfg.organization.tagGroup.options.splice(i, 1); }
 
+  function askResetDefault() {
+    confirmDlg.value = { text: "恢复默认模板？将覆盖当前未保存的编辑（点保存后生效）。", action: resetDefault };
+  }
   function resetDefault() {
     Object.assign(cfg, JSON.parse(JSON.stringify(DEFAULT)));
     toast.success("已载入默认模板（未保存，请点右上保存生效）");
@@ -127,6 +140,7 @@
       clean.organization.tagGroup.options = clean.organization.tagGroup.options.map((t: string) => String(t).trim()).filter(Boolean);
       const r = await $fetch<any>("/api/v1/gx/config", { method: "PUT", body: clean });
       Object.assign(cfg, clean); cfg.version = r?.version ?? cfg.version;
+      builtKeys.value = new Set(clean.attributes.map((a: any) => a.key));
       toast.success("配置已保存（版本 " + (r?.version ?? "?") + "）");
     } catch (e) { toast.error("保存失败：" + ((e as Error)?.message ?? String(e))); }
     finally { saving.value = false; }
@@ -138,15 +152,15 @@
 <template>
   <div class="space-y-4">
     <Teleport to="#collection-header-actions" defer>
-      <Button size="sm" variant="outline" :disabled="saving || !isOwner" @click="resetDefault"><MdiRestore class="mr-1 size-4" /> 默认</Button>
-      <Button size="sm" :loading="saving" :disabled="!isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</Button>
+      <button :class="[btnGhost, 'active:scale-95']" :disabled="saving || !isOwner" @click="askResetDefault"><MdiRestore class="size-4" /> 默认</button>
+      <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving || !isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</button>
     </Teleport>
 
-    <div v-if="!isOwner" class="rounded-xl border border-amber-500/30 bg-amber-500/15 p-3 text-sm text-amber-700">仅管理员（owner）可修改库存配置。</div>
+    <div v-if="!isOwner" class="rounded-xl bg-amber-500/15 p-3 text-sm text-amber-600">仅管理员（owner）可修改库存配置。</div>
 
-    <div v-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
+    <div v-if="err" :class="errorCls">{{ err }}</div>
     <div v-else-if="loading" class="space-y-2">
-      <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
+      <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
     </div>
     <template v-else>
       <details class="rounded-xl border bg-card p-4 text-sm" open>
@@ -164,7 +178,7 @@
       <section class="space-y-3 rounded-xl border bg-card p-4">
         <div class="flex items-center justify-between">
           <span class="text-sm font-semibold">属性（{{ cfg.attributes.length }}）</span>
-          <Button size="sm" variant="outline" @click="addAttr"><MdiPlus class="mr-1 size-4" /> 添加属性</Button>
+          <button :class="[btnGhost, 'active:scale-95']" @click="addAttr"><MdiPlus class="size-4" /> 添加属性</button>
         </div>
         <div class="flex flex-col gap-3">
           <div v-for="(a, i) in cfg.attributes" :key="i" class="rounded-lg border p-3">
@@ -192,10 +206,10 @@
             </div>
             <div class="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
               <span>键</span>
-              <input v-model="a.key" :class="[inputCls, 'h-8 w-40 font-mono text-xs']" />
+              <input v-model="a.key" :disabled="builtKeys.has(a.key)" title="键是稳定标识，建成后别改" :class="[inputCls, 'h-9 w-40 font-mono text-base disabled:opacity-50']" />
             </div>
           </div>
-          <div v-if="!cfg.attributes.length" class="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">还没有属性，点「添加属性」。</div>
+          <div v-if="!cfg.attributes.length" class="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">还没有属性，点「添加属性」。</div>
         </div>
       </section>
 
@@ -211,7 +225,7 @@
             <input v-model="cfg.location.shelf.name" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="库位" />
           </label>
           <label class="block text-sm">格式（正则，可选）
-            <input v-model="cfg.location.shelf.pattern" :class="[inputCls, 'mt-1 w-full font-mono text-xs']" placeholder="^[A-Z]-\\d{1,3}$" />
+            <input v-model="cfg.location.shelf.pattern" :class="[inputCls, 'mt-1 w-full font-mono text-base']" placeholder="^[A-Z]-\\d{1,3}$" />
           </label>
         </div>
         <p class="text-xs text-muted-foreground">库位可重复（同一货架位可放多款）；唯一性只对资产号/二维码。</p>
@@ -221,7 +235,7 @@
       <section class="space-y-3 rounded-xl border bg-card p-4">
         <div class="flex items-center justify-between">
           <span class="text-sm font-semibold">媒体槽位（{{ cfg.media.slots.length }}）</span>
-          <Button size="sm" variant="outline" @click="addSlot"><MdiPlus class="mr-1 size-4" /> 添加槽位</Button>
+          <button :class="[btnGhost, 'active:scale-95']" @click="addSlot"><MdiPlus class="size-4" /> 添加槽位</button>
         </div>
         <div class="flex flex-col gap-2">
           <div v-for="(s, i) in cfg.media.slots" :key="i" class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
@@ -250,12 +264,12 @@
         <div>
           <div class="mb-1 flex items-center justify-between">
             <span class="text-sm">标签选项（{{ cfg.organization.tagGroup.options.length }}）</span>
-            <Button size="sm" variant="outline" @click="addTag"><MdiPlus class="mr-1 size-4" /> 添加</Button>
+            <button :class="[btnGhost, 'active:scale-95']" @click="addTag"><MdiPlus class="size-4" /> 添加</button>
           </div>
           <div class="flex flex-wrap gap-2">
             <div v-for="(t, i) in cfg.organization.tagGroup.options" :key="i" class="flex items-center gap-1 rounded-full border pl-2">
-              <input v-model="cfg.organization.tagGroup.options[i]" class="w-20 bg-transparent py-1 text-sm outline-none" placeholder="标签" />
-              <button class="grid size-6 place-items-center text-muted-foreground hover:text-destructive" @click="delTag(i)"><MdiDelete class="h-4 w-4" /></button>
+              <input v-model="cfg.organization.tagGroup.options[i]" class="w-20 bg-transparent py-1 text-base outline-none" placeholder="标签" />
+              <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95" title="删除标签" @click="delTag(i)"><MdiDelete class="h-4 w-4" /></button>
             </div>
           </div>
         </div>
@@ -285,10 +299,20 @@
             <span class="w-12 shrink-0 font-mono text-xs">v{{ h.version }}</span>
             <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ h.reason || "保存" }}</span>
             <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ (h.createdAt || "").slice(0, 16).replace("T", " ") }}</span>
-            <button class="shrink-0 rounded-lg border px-2 py-1 text-xs transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="!isOwner || restoring === h.version || h.version === cfg.version" @click="restoreVersion(h.version)">{{ restoring === h.version ? "恢复中…" : "恢复" }}</button>
+            <button class="h-9 shrink-0 rounded-lg border px-3 text-xs transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="!isOwner || restoring === h.version || h.version === cfg.version" @click="restoreVersion(h.version)">{{ restoring === h.version ? "恢复中…" : "恢复" }}</button>
           </div>
         </div>
       </section>
     </template>
+
+    <div v-if="confirmDlg" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="confirmDlg = null">
+      <div class="w-full max-w-xs rounded-2xl border bg-card p-4 shadow-xl">
+        <p class="text-sm">{{ confirmDlg.text }}</p>
+        <div class="mt-4 flex justify-end gap-2">
+          <button :class="btnGhost" @click="confirmDlg = null">取消</button>
+          <button :class="[btnPrimary, 'active:scale-95']" @click="confirmDlg.action(); confirmDlg = null">确认</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

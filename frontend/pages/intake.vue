@@ -25,13 +25,8 @@
     thumb: string | null;
   };
   type IntakeItem = { entityId: string; name?: string; count: number; cost: number; sell: number };
-  type Intake = {
-    id: string; ts: string; supplier?: string; note?: string;
-    items: IntakeItem[]; totalCost: number; rolledBack?: boolean;
-  };
 
   const rows = ref<Row[]>([]);
-  const intakes = ref<Intake[]>([]);
   const q = ref("");
   const loading = ref(true);
   const err = ref("");
@@ -40,7 +35,6 @@
   const note = ref("");
   const items = reactive<Record<string, IntakeItem>>({});
   const saving = ref(false);
-  const rollbackBusy = ref("");
 
   const SUP_KEY = "hb.intake.suppliers";
   const suppliers = ref<string[]>([]);
@@ -63,10 +57,7 @@
     loading.value = true;
     err.value = "";
     try {
-      const [agg, fl] = await Promise.all([
-        $fetch<Record<string, any>>("/api/v1/ledger"),
-        $fetch<Array<Record<string, any>>>("/api/v1/biz/intakes").catch(() => []),
-      ]);
+      const agg = await $fetch<Record<string, any>>("/api/v1/ledger");
       rows.value = ((agg.items as Array<Record<string, any>>) || []).map(e => ({
         id: e.id, name: e.name,
         brand: fieldOf(e, "品牌") || e.parent || "",
@@ -74,7 +65,6 @@
         sell: num(fieldOf(e, "售价")), purchase: num(fieldOf(e, "进价")),
         qty: e.quantity ?? 0, safety: num(fieldOf(e, "安全库存")) || 0, thumb: e.thumb || null,
       }));
-      intakes.value = (fl || []) as Intake[];
     } catch (e) {
       err.value = "加载失败：" + ((e as Error)?.message ?? String(e));
     } finally {
@@ -172,22 +162,7 @@
     }
   }
 
-  async function rollback(t: Intake) {
-    if (!window.confirm(`回滚入库单 ${t.id}？将把 ${t.items.length} 款商品库存减回去。`)) return;
-    rollbackBusy.value = t.id;
-    try {
-      await $fetch("/api/v1/biz/intake/rollback", { method: "POST", headers: { "Idempotency-Key": `rb-${t.id}` }, body: { intakeId: t.id } });
-      flash("入库单已回滚");
-      await load();
-    } catch (e) {
-      flash("回滚失败：" + ((e as Error)?.message ?? String(e)));
-    } finally {
-      rollbackBusy.value = "";
-    }
-  }
-
   function fmt(n: number | null | undefined): string { return n === null || n === undefined ? "" : Number(n).toFixed(2); }
-  function dt(ts: string): string { return ts.length >= 16 ? ts.slice(5, 16).replace("T", " ") : ts; }
 
   // ---------- 离线队列 ----------
   const oq = useOfflineQueue();
@@ -204,12 +179,12 @@
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
       <header class="mb-6 flex flex-wrap items-center gap-2">
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">入库</h1>
-        <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
+        <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/intake-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库记录</NuxtLink>
-          <NuxtLink to="/outbound" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库</NuxtLink>
-          <NuxtLink to="/documents" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">单据</NuxtLink>
-          <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
+          <NuxtLink to="/intake-records" :class="btnGhost">入库记录</NuxtLink>
+          <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
+          <NuxtLink to="/documents" :class="btnGhost">单据</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
 
       </header>
@@ -220,14 +195,14 @@
           <MdiAlertOutline class="h-5 w-5 text-amber-600" />
           <span class="text-sm font-medium">补货草稿</span>
           <span class="text-xs text-muted-foreground">低库存 {{ lowStock.length }} 款</span>
-          <button class="ml-auto rounded-lg border bg-background px-2.5 py-1 text-xs transition hover:bg-muted active:scale-95" @click="copyRestock">复制清单</button>
+          <button class="ml-auto h-9 rounded-lg border bg-background px-3 text-xs transition hover:bg-muted active:scale-95" @click="copyRestock">复制清单</button>
         </div>
         <div class="divide-y text-sm">
           <div v-for="x in lowStock" :key="x.id" class="flex items-center gap-2 py-1.5">
             <span class="min-w-0 flex-1 truncate">{{ x.name }}</span>
             <span class="shrink-0 text-xs tabular-nums text-muted-foreground">当前 {{ x.qty }} / 安全 {{ x.safety }}</span>
-            <span class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-xs tabular-nums text-amber-600">建议补 {{ x.suggest }}</span>
-            <button class="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-primary transition hover:bg-primary/10" @click="addRestock(x)">＋加入</button>
+            <span class="shrink-0 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs tabular-nums text-amber-600">建议补 {{ x.suggest }}</span>
+            <button class="grid h-9 shrink-0 place-items-center rounded-lg px-3 text-xs font-medium text-primary transition hover:bg-primary/10 active:scale-95" @click="addRestock(x)">＋加入</button>
           </div>
         </div>
       </section>
@@ -235,29 +210,41 @@
       <!-- 入库单表单 -->
       <section class="mb-5 rounded-xl border bg-card p-3">
         <div class="flex flex-wrap items-center gap-2">
-          <input v-model="supplier" :class="[inputCls, 'w-full md:w-56']" list="sup-list" placeholder="供应商（自由填写）" @change="saveSupplier" />
+          <input v-model="supplier" :class="[inputCls, 'w-full text-base md:w-56']" list="sup-list" placeholder="供应商（自由填写）" @change="saveSupplier" />
           <datalist id="sup-list">
             <option v-for="s in suppliers" :key="s" :value="s"></option>
           </datalist>
-          <input v-model="note" :class="[inputCls, 'min-w-0 flex-1']" placeholder="备注（档口/日期/特殊约定…）" />
+          <input v-model="note" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="备注（档口/日期/特殊约定…）" />
         </div>
         <div class="mt-2 flex items-center gap-2">
           <input v-model="q" :class="[inputCls, 'h-11 min-w-0 flex-1 text-base']" placeholder="搜索商品加入入库单" />
         </div>
-        <div class="mt-2 max-h-56 space-y-1 overflow-auto">
-          <button
-            v-for="r in filtered" :key="r.id"
-            class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted/60 active:scale-[0.99]"
-            @click="addItem(r)"
-          >
-            <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" class="h-9 w-9 shrink-0 rounded-md border object-cover" alt="" />
-            <span class="min-w-0 flex-1 truncate">{{ r.name }}</span>
-            <span class="shrink-0 text-xs text-muted-foreground">{{ [r.brand, r.size, r.spec].filter(Boolean).join(" ") }}</span>
-            <span class="shrink-0 text-xs tabular-nums text-muted-foreground">库存 {{ r.qty }}</span>
-            <span class="shrink-0 text-xs font-medium text-primary">＋加入</span>
-          </button>
-          <div v-if="!filtered.length" class="py-4 text-center text-sm text-muted-foreground">没有匹配的商品（先到台账新增）</div>
+        <div v-if="loading" class="mt-2 space-y-2">
+          <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
         </div>
+        <div v-else-if="err" :class="[errorCls, 'mt-2 flex items-center gap-2']">
+          <span class="min-w-0 flex-1 text-sm">{{ err }}</span>
+          <button :class="[btnGhost, 'shrink-0 active:scale-95']" @click="load">重试</button>
+        </div>
+        <template v-else>
+          <div v-if="!rows.length" :class="emptyCls">
+            暂无商品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">台账</NuxtLink> 新增
+          </div>
+          <div v-else class="mt-2 max-h-56 space-y-1 overflow-auto">
+            <button
+              v-for="r in filtered" :key="r.id"
+              class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted/60 active:scale-[0.99]"
+              @click="addItem(r)"
+            >
+              <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" class="h-9 w-9 shrink-0 rounded-md border object-cover" alt="" />
+              <span class="min-w-0 flex-1 truncate">{{ r.name }}</span>
+              <span class="shrink-0 text-xs text-muted-foreground">{{ [r.brand, r.size, r.spec].filter(Boolean).join(" ") }}</span>
+              <span class="shrink-0 text-xs tabular-nums text-muted-foreground">库存 {{ r.qty }}</span>
+              <span class="shrink-0 text-xs font-medium text-primary">＋加入</span>
+            </button>
+            <div v-if="!filtered.length" class="py-4 text-center text-sm text-muted-foreground">没有匹配的商品（先到台账新增）</div>
+          </div>
+        </template>
       </section>
 
       <!-- 入库明细 -->
@@ -270,15 +257,15 @@
           <div v-for="l in cartList" :key="l.entityId" class="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
             <span class="min-w-0 flex-1 truncate">{{ l.name }}</span>
             <label class="flex items-center gap-1 text-xs text-muted-foreground">数量
-              <input v-model.number="l.count" type="number" inputmode="numeric" :class="[inputCls, 'w-16']" />
+              <input v-model.number="l.count" type="number" inputmode="numeric" :class="[inputCls, 'h-10 w-16 text-base']" />
             </label>
             <label class="flex items-center gap-1 text-xs text-muted-foreground">成本
-              <input v-model.number="l.cost" type="number" inputmode="decimal" :class="[inputCls, 'w-16']" />
+              <input v-model.number="l.cost" type="number" inputmode="decimal" :class="[inputCls, 'h-10 w-16 text-base']" />
             </label>
             <label class="flex items-center gap-1 text-xs text-muted-foreground">售价
-              <input v-model.number="l.sell" type="number" inputmode="decimal" :class="[inputCls, 'w-16']" />
+              <input v-model.number="l.sell" type="number" inputmode="decimal" :class="[inputCls, 'h-10 w-16 text-base']" />
             </label>
-            <button class="rounded px-2 py-1 text-xs text-destructive transition hover:bg-destructive/10" @click="removeItem(l.entityId)">移除</button>
+            <button class="h-9 rounded-lg px-3 text-xs text-destructive transition hover:bg-destructive/10 active:scale-95" @click="removeItem(l.entityId)">移除</button>
           </div>
         </div>
         <div class="mt-3 flex justify-end gap-2">

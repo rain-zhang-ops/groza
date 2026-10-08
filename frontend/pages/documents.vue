@@ -1,5 +1,4 @@
 <script setup lang="ts">
-  import { toast } from "@/components/ui/sonner";
   const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
 
   definePageMeta({ middleware: ["auth"] });
@@ -27,8 +26,10 @@
   const dFrom = ref("");
   const dTo = ref("");
   const fParty = ref("");
+  const msg = ref("");
+  const confirmRb = ref<Doc | null>(null);
 
-  function flash(t: string) { try { toast(t); } catch (_e) { alert(t); } }
+  function flash(t: string) { msg.value = t; }
   function fmt(n: number | null | undefined): string { return n === null || n === undefined ? "0.00" : Number(n).toFixed(2); }
   function dt(ts: string): string { return String(ts || "").slice(5, 16).replace("T", " "); }
 
@@ -51,7 +52,8 @@
     for (const d of matched.value) if (!d.rolledBack) { cnt += (d.items || []).reduce((a, it) => a + it.count, 0); cost += d.totalCost || 0; }
     return { cnt, cost };
   });
-  watch(kind, () => { fParty.value = ""; load(); });
+  watch(kind, () => { q.value = ""; fParty.value = ""; dFrom.value = ""; dTo.value = ""; load(); });
+  function resetFilters() { q.value = ""; fParty.value = ""; dFrom.value = ""; dTo.value = ""; showRolled.value = true; }
 
   async function load() {
     loading.value = true; err.value = "";
@@ -63,7 +65,7 @@
   }
   onMounted(load);
   async function rollback(d: Doc) {
-    if (!window.confirm(`回滚该${kind.value === "intake" ? "入库" : "出库"}单 ${d.id}？将把库存改回去。`)) return;
+    confirmRb.value = null;
     busy.value = d.id;
     try {
       const path = d.kind === "intake" ? "/api/v1/biz/intake/rollback" : "/api/v1/biz/outbound/rollback";
@@ -97,11 +99,11 @@
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
       <header class="mb-6 flex flex-wrap items-center gap-2">
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">单据</h1>
-        <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{{ matched.length }} 单</span>
+        <span :class="badgeCls">{{ matched.length }} 单</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
           <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
           <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
+          <NuxtLink to="/intake" :class="btnPrimary">去入库</NuxtLink>
         </div>
       </header>
 
@@ -116,42 +118,58 @@
             <option value="">全部{{ partyLabel }}</option>
             <option v-for="p in parties" :key="p" :value="p">{{ p }}</option>
           </select>
-          <label class="inline-flex items-center gap-1 text-xs text-muted-foreground"><input v-model="showRolled" type="checkbox" class="accent-primary" /> 显示已回滚</label>
-          <button class="rounded-lg border px-2.5 py-1.5 text-sm transition hover:bg-muted" @click="exportCSV">导出CSV</button>
+          <button :class="btnGhost" @click="exportCSV">导出CSV</button>
         </div>
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <label>从 <input v-model="dFrom" type="date" :class="[inputCls, 'h-9']" /></label>
-          <label>到 <input v-model="dTo" type="date" :class="[inputCls, 'h-9']" /></label>
-          <span class="ml-auto">共 {{ matched.length }} 单 · {{ totals.cnt }} 件<template v-if="kind !== 'outbound'"> · 金额 ¥{{ fmt(totals.cost) }}</template>（不含已回滚）</span>
+          <label>从 <input v-model="dFrom" type="date" :class="[inputCls, 'h-11 text-base']" /></label>
+          <label>到 <input v-model="dTo" type="date" :class="[inputCls, 'h-11 text-base']" /></label>
+          <label class="inline-flex items-center gap-1"><input v-model="showRolled" type="checkbox" class="accent-primary" /> 显示已回滚</label>
+          <button :class="btnGhost" @click="resetFilters">重置</button>
+          <span class="ml-auto tabular-nums">共 {{ matched.length }} 单 · {{ totals.cnt }} 件<template v-if="kind !== 'outbound'"> · 金额 ¥{{ fmt(totals.cost) }}</template>（不含已回滚）</span>
         </div>
       </section>
 
       <div v-if="loading" class="space-y-2">
-        <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
+        <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
       </div>
-      <div v-else-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
+      <div v-else-if="err" :class="errorCls">{{ err }}</div>
       <div v-else class="space-y-2">
         <div v-for="d in matched" :key="d.id" class="rounded-xl border bg-card px-3 py-2.5 text-sm" :class="d.rolledBack ? 'opacity-50' : ''">
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-medium tabular-nums">{{ dt(d.ts) }}</span>
-            <span v-if="d.party" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ d.party }}</span>
-            <span class="text-xs text-muted-foreground">{{ (d.items || []).length }} 款 · {{ (d.items || []).reduce((a, it) => a + it.count, 0) }} 件</span>
+            <span v-if="d.party" class="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{{ d.party }}</span>
+            <span class="text-xs text-muted-foreground tabular-nums">{{ (d.items || []).length }} 款 · {{ (d.items || []).reduce((a, it) => a + it.count, 0) }} 件</span>
             <span v-if="kind !== 'outbound'" class="font-medium tabular-nums">¥{{ fmt(d.totalCost) }}</span>
-            <span class="text-xs text-muted-foreground">#{{ d.id }}</span>
+            <span class="text-xs text-muted-foreground tabular-nums">#{{ d.id }}</span>
             <button
               v-if="!d.rolledBack && kind !== 'adjust'"
-              class="ml-auto rounded-lg px-2 py-1 text-xs text-destructive transition hover:bg-destructive/10 disabled:opacity-40"
+              class="ml-auto inline-flex h-9 items-center rounded-lg px-3 text-xs text-destructive transition hover:bg-destructive/10 active:scale-95 disabled:opacity-40"
               :disabled="busy === d.id"
-              @click="rollback(d)"
+              @click="confirmRb = d"
             >回滚</button>
-            <span v-else-if="d.rolledBack" class="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">已回滚</span>
+            <span v-else-if="d.rolledBack" class="ml-auto rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">已回滚</span>
           </div>
           <div v-if="d.note" class="mt-1 text-xs text-muted-foreground">备注：{{ d.note }}</div>
           <div class="mt-1 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
             <span v-for="it in (d.items || [])" :key="it.entityId" class="rounded-md bg-muted px-1.5 py-0.5">{{ it.name || "（已删除）" }} ×{{ it.count }}</span>
           </div>
         </div>
-        <div v-if="!matched.length" class="py-10 text-center text-sm text-muted-foreground">暂无单据</div>
+        <div v-if="!matched.length" :class="emptyCls">
+          暂无单据，
+          <NuxtLink to="/intake" class="text-primary underline underline-offset-2">去入库 →</NuxtLink>
+        </div>
+      </div>
+
+      <p v-if="msg" class="mt-3 text-center text-xs text-muted-foreground">{{ msg }}</p>
+
+      <div v-if="confirmRb" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="confirmRb = null">
+        <div class="w-full max-w-xs rounded-2xl border bg-card p-4 shadow-xl">
+          <p class="text-sm">确认回滚该{{ kind === 'intake' ? '入库' : '出库' }}单 #{{ confirmRb.id }}？将把库存改回去。</p>
+          <div class="mt-4 flex justify-end gap-2">
+            <button :class="btnGhost" @click="confirmRb = null">取消</button>
+            <button :class="[btnPrimary, 'active:scale-95']" @click="rollback(confirmRb)">确认回滚</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

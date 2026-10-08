@@ -51,7 +51,7 @@
 ```
 
 - **容器**：统一 `max-w-5xl p-4 md:p-8`；仅数据密集页（台账）允许例外：`max-w-[1700px] p-3 md:p-6`。
-- **padding-bottom**：标准页 `calc(2rem + env(safe-area-inset-bottom))`；有常驻底部保存条的页（出库）用 `calc(6.5rem + env(...))`；台账 `calc(1rem + env(...))`（有父级 pb-16 补偿）。
+- **padding-bottom**：标准页 `calc(2rem + env(safe-area-inset-bottom))`；有常驻底部保存条的页（出库）用 `calc(8rem + env(...))`（保存条抬高到 Dock 上方后占至约 7.75rem）；台账 `calc(1rem + env(...))`（有父级 pb-16 补偿）。
 - **页头**：`mb-6`；h1 前不加装饰图标块。页头按钮顺序：主流程入口（primary）在最右，互跳链接（border）在左；每屏主按钮至多 1 个。
 - **互跳集合**：进出/记录/单据页头部固定含「入库 · 出库 · 单据 · 台账」。
 

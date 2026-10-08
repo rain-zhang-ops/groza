@@ -46,7 +46,6 @@
   const note = ref("");
   const items = reactive<Record<string, OutboundItem>>({});
   const saving = ref(false);
-  const rollbackBusy = ref("");
 
   const REASONS = ["售出", "赠送", "自用", "损耗", "调拨", "其他"];
 
@@ -195,22 +194,6 @@
     }
   }
 
-  async function rollback(t: Outbound) {
-    if (!window.confirm(`回滚出库单 ${t.id}？将把 ${t.items.length} 款商品库存加回去。`)) return;
-    rollbackBusy.value = t.id;
-    try {
-      await $fetch("/api/v1/biz/outbound/rollback", { method: "POST", headers: { "Idempotency-Key": `rb-${t.id}` }, body: { outboundId: t.id } });
-      flash("出库单已回滚");
-      await load();
-    } catch (e) {
-      flash("回滚失败：" + ((e as Error)?.message ?? String(e)));
-    } finally {
-      rollbackBusy.value = "";
-    }
-  }
-
-  function dt(ts: string): string { return ts.length >= 16 ? ts.slice(5, 16).replace("T", " ") : ts; }
-
   // ---------- 扫码（连续加货） ----------
   const scanOpen = ref(false);
   const scanMsg = ref("");
@@ -278,15 +261,15 @@
 
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
-    <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(6.5rem + env(safe-area-inset-bottom))">
+    <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(8rem + env(safe-area-inset-bottom))">
       <header class="mb-6 flex flex-wrap items-center gap-2">
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">出库</h1>
-        <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
+        <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/outbound-records" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">出库记录</NuxtLink>
-          <NuxtLink to="/intake" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">入库</NuxtLink>
-          <NuxtLink to="/documents" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">单据</NuxtLink>
-          <NuxtLink to="/ledger" class="rounded-lg border bg-background px-3 py-1.5 text-sm transition hover:bg-muted">台账</NuxtLink>
+          <NuxtLink to="/outbound-records" :class="btnGhost">出库记录</NuxtLink>
+          <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
+          <NuxtLink to="/documents" :class="btnGhost">单据</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
 
       </header>
@@ -317,38 +300,50 @@
           </div>
           <div v-if="!q && recentOut.length" class="mt-2 flex flex-wrap items-center gap-1 text-xs">
             <span class="text-muted-foreground">最近出库</span>
-            <button v-for="r in recentOut" :key="r.id" class="rounded-full border px-2 py-0.5 transition hover:bg-muted" @click="inc(r)">{{ r.name }}</button>
+            <button v-for="r in recentOut" :key="r.id" class="h-9 rounded-full border px-3 transition hover:bg-muted active:scale-95" @click="inc(r)">{{ r.name }}</button>
           </div>
-          <div class="mt-2 max-h-[46vh] space-y-1 overflow-auto">
-            <div
-              v-for="r in filtered" :key="r.id"
-              class="flex items-center gap-2 rounded-xl px-2 py-1.5"
-              :class="r.qty <= 0 ? 'opacity-50' : 'hover:bg-muted/60'"
-            >
-              <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" class="h-11 w-11 shrink-0 rounded-lg border object-cover" alt="" />
-              <span v-else class="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-dashed bg-muted/60 text-[10px] text-muted-foreground">无图</span>
-              <div class="min-w-0 flex-1">
-                <div class="truncate text-sm font-medium">{{ r.name }}</div>
-                <div class="truncate text-xs text-muted-foreground">{{ [r.brand, r.size, r.spec].filter(Boolean).join(" ") }} · 库存 {{ r.qty }}</div>
-              </div>
-              <div class="shrink-0">
-                <button v-if="!items[r.id]" class="grid h-11 w-11 place-items-center rounded-full bg-primary text-xl text-primary-foreground transition active:scale-90 disabled:opacity-40" :disabled="r.qty <= 0" @click="inc(r)"><MdiPlus class="h-6 w-6" /></button>
-                <div v-else class="flex items-center overflow-hidden rounded-full border">
-                  <button class="grid h-11 w-11 place-items-center text-xl transition active:bg-muted" @click="dec(r)"><MdiMinus class="h-5 w-5" /></button>
-                  <span class="w-8 text-center text-base font-semibold tabular-nums">{{ items[r.id].count }}</span>
-                  <button class="grid h-11 w-11 place-items-center text-xl transition active:bg-muted disabled:opacity-40" :disabled="items[r.id].count >= r.qty" @click="inc(r)"><MdiPlus class="h-6 w-6" /></button>
+          <div v-if="loading" class="mt-2 space-y-2">
+            <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
+          </div>
+          <div v-else-if="err" :class="[errorCls, 'mt-2 flex items-center gap-2']">
+            <span class="min-w-0 flex-1 text-sm">{{ err }}</span>
+            <button :class="[btnGhost, 'shrink-0 active:scale-95']" @click="load">重试</button>
+          </div>
+          <template v-else>
+            <div v-if="!rows.length" :class="emptyCls">
+              暂无商品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">台账</NuxtLink> 新增
+            </div>
+            <div v-else class="mt-2 max-h-[46vh] space-y-1 overflow-auto">
+              <div
+                v-for="r in filtered" :key="r.id"
+                class="flex items-center gap-2 rounded-xl px-2 py-1.5"
+                :class="r.qty <= 0 ? 'opacity-50' : 'hover:bg-muted/60'"
+              >
+                <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" class="h-11 w-11 shrink-0 rounded-lg border object-cover" alt="" />
+                <span v-else class="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-dashed bg-muted/60 text-[10px] text-muted-foreground">无图</span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate text-sm font-medium">{{ r.name }}</div>
+                  <div class="truncate text-xs text-muted-foreground">{{ [r.brand, r.size, r.spec].filter(Boolean).join(" ") }} · 库存 {{ r.qty }}</div>
+                </div>
+                <div class="shrink-0">
+                  <button v-if="!items[r.id]" class="grid h-11 w-11 place-items-center rounded-full bg-primary text-xl text-primary-foreground transition active:scale-90 disabled:opacity-40" :disabled="r.qty <= 0" @click="inc(r)"><MdiPlus class="h-6 w-6" /></button>
+                  <div v-else class="flex items-center overflow-hidden rounded-full border">
+                    <button class="grid h-11 w-11 place-items-center text-xl transition active:bg-muted" @click="dec(r)"><MdiMinus class="h-5 w-5" /></button>
+                    <span class="w-8 text-center text-base font-semibold tabular-nums">{{ items[r.id].count }}</span>
+                    <button class="grid h-11 w-11 place-items-center text-xl transition active:bg-muted disabled:opacity-40" :disabled="items[r.id].count >= r.qty" @click="inc(r)"><MdiPlus class="h-6 w-6" /></button>
+                  </div>
                 </div>
               </div>
+              <div v-if="!filtered.length" :class="emptyCls">没有匹配的商品<template v-if="hideSoldOut && hiddenSoldOut">（已隐藏 {{ hiddenSoldOut }} 个无库存）</template></div>
             </div>
-            <div v-if="!filtered.length" class="py-6 text-center text-sm text-muted-foreground">没有匹配的商品<template v-if="hideSoldOut && hiddenSoldOut">（已隐藏 {{ hiddenSoldOut }} 个无库存）</template></div>
-          </div>
+          </template>
         </section>
 
         <!-- 已选清单 -->
         <section v-if="cartList.length" class="mb-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
           <div class="mb-2 flex items-center gap-2 text-sm font-medium">
             已选（{{ cartList.length }} 款 · {{ cartCount }} 件）
-            <span class="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ reason }}</span>
+            <span :class="[badgeCls, 'ml-auto']">{{ reason }}</span>
           </div>
           <div class="space-y-2">
             <div v-for="l in cartList" :key="l.entityId" class="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
@@ -357,7 +352,7 @@
               <label class="flex items-center gap-1 text-xs text-muted-foreground">数量
                 <input v-model.number="l.count" type="number" inputmode="numeric" min="1" :class="[inputCls, 'h-10 w-16 text-base']" />
               </label>
-              <button class="rounded px-2 py-1 text-xs text-destructive transition hover:bg-destructive/10" @click="removeItem(l.entityId)">移除</button>
+              <button class="h-9 rounded-lg px-3 text-xs text-destructive transition hover:bg-destructive/10 active:scale-95" @click="removeItem(l.entityId)">移除</button>
             </div>
           </div>
           <div v-if="!isMobile" class="mt-3 flex justify-end gap-2">
@@ -372,11 +367,10 @@
     <!-- 移动端：底部常驻保存条 -->
     <div
       v-if="isMobile && cartList.length"
-      class="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md"
-      style="padding-bottom: calc(0.5rem + env(safe-area-inset-bottom))"
+      class="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md"
     >
       <div class="flex items-center gap-2">
-        <span class="text-sm text-muted-foreground">已选 <b class="text-foreground">{{ cartList.length }}</b> 款 · {{ cartCount }} 件</span>
+        <span class="text-sm tabular-nums text-muted-foreground">已选 <b class="text-foreground">{{ cartList.length }}</b> 款 · {{ cartCount }} 件</span>
         <button class="ml-auto h-12 rounded-xl border px-3 text-sm transition active:scale-95" @click="clearItems">清空</button>
         <button class="h-12 rounded-xl bg-primary px-5 text-base font-medium text-primary-foreground transition active:scale-95 disabled:opacity-50" :disabled="saving" @click="submit">{{ saving ? "保存中…" : "保存出库单" }}</button>
       </div>
@@ -388,7 +382,7 @@
         <p class="mb-2 text-center">{{ scanMsg }}</p>
         <video ref="videoEl" class="max-h-[60vh] w-full max-w-md rounded-xl" autoplay playsinline muted></video>
         <div class="mt-3 flex items-center gap-2">
-          <input placeholder="或输入编号/名称后回车" class="rounded-lg px-3 py-2 text-black" @keyup.enter="onScanInput" />
+          <input placeholder="或输入编号/名称后回车" class="rounded-lg border border-white/40 bg-white/10 px-3 py-2 text-base text-white outline-none transition placeholder:text-white/50 focus:ring-2 focus:ring-white/40" @keyup.enter="onScanInput" />
           <button class="rounded-lg border border-white px-3 py-2 transition hover:bg-white/10" @click="closeScan">完成</button>
         </div>
       </div>

@@ -1,6 +1,5 @@
 <script setup lang="ts">
   const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
-  import { toast } from "@/components/ui/sonner";
 
   definePageMeta({
     middleware: ["auth"],
@@ -26,10 +25,10 @@
   const dTo = ref("");
   const showRolled = ref(true);
   const rollbackBusy = ref("");
+  const confirmRb = ref<Outbound | null>(null);
 
-  function flash(t: string) {
-    try { toast(t); } catch (_e) { msg.value = t; }
-  }
+  function flash(t: string) { msg.value = t; }
+  function resetFilters() { q.value = ""; fReason.value = ""; dFrom.value = ""; dTo.value = ""; showRolled.value = true; }
 
   async function load() {
     loading.value = true; err.value = "";
@@ -64,7 +63,7 @@
   const totalOut = computed(() => matched.value.reduce((s, t) => s + (t.rolledBack ? 0 : (t.items || []).reduce((a, it) => a + it.count, 0)), 0));
 
   async function rollback(t: Outbound) {
-    if (!window.confirm(`回滚出库单 ${t.id}？将把 ${t.items.length} 款商品库存加回去。`)) return;
+    confirmRb.value = null;
     rollbackBusy.value = t.id;
     try {
       await $fetch("/api/v1/biz/outbound/rollback", { method: "POST", headers: { "Idempotency-Key": `rb-${t.id}` }, body: { outboundId: t.id } });
@@ -103,12 +102,12 @@
     <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
       <header class="mb-6 flex flex-wrap items-center gap-2">
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">出库记录</h1>
-        <span class="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{{ matched.length }} 单</span>
+        <span :class="badgeCls">{{ matched.length }} 单</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/outbound" :class="btnPrimary">去出库</NuxtLink>
           <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
           <NuxtLink to="/documents" :class="btnGhost">单据</NuxtLink>
           <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
+          <NuxtLink to="/outbound" :class="btnPrimary">去出库</NuxtLink>
         </div>
 
       </header>
@@ -118,45 +117,59 @@
         <div class="flex flex-wrap items-center gap-2">
           <input v-model="q" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="搜索：商品名 / 备注 / 单号" />
           <select v-model="fReason" :class="[inputCls, 'h-10 text-base']"><option value="">全部去向</option><option v-for="r in reasons" :key="r" :value="r">{{ r }}</option></select>
-          <label class="inline-flex items-center gap-1 text-xs text-muted-foreground"><input v-model="showRolled" type="checkbox" class="accent-primary" /> 显示已回滚</label>
         </div>
         <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          <label>从 <input v-model="dFrom" type="date" :class="[inputCls, 'h-9']" /></label>
-          <label>到 <input v-model="dTo" type="date" :class="[inputCls, 'h-9']" /></label>
+          <label>从 <input v-model="dFrom" type="date" :class="[inputCls, 'h-11 text-base']" /></label>
+          <label>到 <input v-model="dTo" type="date" :class="[inputCls, 'h-11 text-base']" /></label>
+          <label class="inline-flex items-center gap-1"><input v-model="showRolled" type="checkbox" class="accent-primary" /> 显示已回滚</label>
+          <button :class="btnGhost" @click="resetFilters">重置</button>
           <button :class="btnGhost" @click="exportCSV">导出CSV</button>
           <button :class="btnGhost" @click="copyText">复制文本</button>
         </div>
-        <div class="mt-1.5 text-xs text-muted-foreground">共 {{ matched.length }} 单 · 出库 {{ totalOut }} 件（不含已回滚）</div>
+        <div class="mt-1.5 text-xs text-muted-foreground tabular-nums">共 {{ matched.length }} 单 · 出库 {{ totalOut }} 件（不含已回滚）</div>
       </section>
 
       <div v-if="loading" class="space-y-2">
-        <div v-for="i in 5" :key="i" class="h-16 animate-pulse rounded-xl border bg-muted/40"></div>
+        <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
       </div>
-      <div v-else-if="err" class="rounded-xl border border-destructive/40 bg-destructive/10 p-4 text-destructive">{{ err }}</div>
+      <div v-else-if="err" :class="errorCls">{{ err }}</div>
       <div v-else class="space-y-2">
         <div v-for="t in matched" :key="t.id" class="rounded-xl border bg-card px-3 py-2.5 text-sm" :class="t.rolledBack ? 'opacity-50' : ''">
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-medium tabular-nums">{{ dt(t.ts) }}</span>
-            <span v-if="t.reason" class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{{ t.reason }}</span>
-            <span class="text-xs text-muted-foreground">{{ t.items.length }} 款 · {{ t.items.reduce((a, it) => a + it.count, 0) }} 件</span>
-            <span class="text-xs text-muted-foreground">#{{ t.id }}</span>
+            <span v-if="t.reason" class="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{{ t.reason }}</span>
+            <span class="text-xs text-muted-foreground tabular-nums">{{ t.items.length }} 款 · {{ t.items.reduce((a, it) => a + it.count, 0) }} 件</span>
+            <span class="text-xs text-muted-foreground tabular-nums">#{{ t.id }}</span>
             <button
               v-if="!t.rolledBack"
-              class="ml-auto rounded-lg px-2 py-1 text-xs text-destructive transition hover:bg-destructive/10 disabled:opacity-40"
+              class="ml-auto inline-flex h-9 items-center rounded-lg px-3 text-xs text-destructive transition hover:bg-destructive/10 active:scale-95 disabled:opacity-40"
               :disabled="rollbackBusy === t.id"
-              @click="rollback(t)"
+              @click="confirmRb = t"
             >回滚</button>
-            <span v-else class="ml-auto rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">已回滚</span>
+            <span v-else class="ml-auto rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">已回滚</span>
           </div>
           <div v-if="t.note" class="mt-1 text-xs text-muted-foreground">备注：{{ t.note }}</div>
           <div class="mt-1 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
             <span v-for="it in t.items" :key="it.entityId" class="rounded-md bg-muted px-1.5 py-0.5">{{ it.name }} ×{{ it.count }}</span>
           </div>
         </div>
-        <div v-if="!matched.length" class="py-10 text-center text-sm text-muted-foreground">没有匹配的出库单</div>
+        <div v-if="!matched.length" :class="emptyCls">
+          没有匹配的出库单，
+          <NuxtLink to="/outbound" class="text-primary underline underline-offset-2">去出库 →</NuxtLink>
+        </div>
       </div>
 
       <p v-if="msg" class="mt-3 text-center text-xs text-muted-foreground">{{ msg }}</p>
+
+      <div v-if="confirmRb" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="confirmRb = null">
+        <div class="w-full max-w-xs rounded-2xl border bg-card p-4 shadow-xl">
+          <p class="text-sm">确认回滚出库单 #{{ confirmRb.id }}？将把 {{ confirmRb.items.length }} 款商品库存加回去。</p>
+          <div class="mt-4 flex justify-end gap-2">
+            <button :class="btnGhost" @click="confirmRb = null">取消</button>
+            <button :class="[btnPrimary, 'active:scale-95']" @click="rollback(confirmRb)">确认回滚</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>

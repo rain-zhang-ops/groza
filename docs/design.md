@@ -482,3 +482,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **交互补全**：移动筛选 sheet 新增排序区块（9 键 + ↑↓ 方向，复用桌面 sort 状态）；分页条移动端只留 上一页/x/y/下一页，「全部=100000」仅桌面。
 - **深色巡检**：tasks 开关滑块 bg-white 改 bg-primary-foreground（随主题反色，修深色下滑块隐形）。
 - **隐藏售罄开关**（补充）：页头「售罄 N」徽章变开关按钮（eye-off/eye 图标），默认隐藏售罄；接入 view/applyView 视图同步（URL `hideSold=0` + localStorage，absent 回落默认 true）；计数改用过滤前的 soldCount 避免徽章死锁；`data=soldout` 视图（待办页跳转）下开关自动失效并置灰。
+
+### 全 tab 页面标准化统一（8）
+- **进出页**（intake/outbound）：补 loading 骨架/error 重试/empty 空态三态；表单与明细输入全量 text-base 防 iOS 缩放；页头互跳链接换 btnGhost；触控目标 ≥36px；出库保存条抬高 `calc(3.75rem+safe-area)` 修被 Dock 遮挡（根容器 padding-bottom 同步升 8rem）；删除 rollback/dt 等死代码。
+- **记录/单据页**（intake-records/outbound-records/documents）：primary 主入口统一最右（去入库/去出库）；日期输入 h-11 text-base；回滚确认 window.confirm → 居中确认弹窗；flash 去 toast/alert 双轨改页内 msg；筛选区加「重置」；徽章/骨架/错误/空态全量换 badgeCls/skeletonCls/errorCls/emptyCls；chip px-2 残留清为 px-2.5；documents 补 primary「去入库」、切 kind Tab 重置全部筛选。
+- **配置页**（collection/fields、ui-options）：shadcn Button 全换 btnPrimary/btnGhost 原生按钮（32px 触控问题解决）；保存中 disabled 防重复提交；ui-options 加载失败禁用保存 + errorCls 重试（防空白表单清空线上配置）；textarea/键/正则/标签输入全量 text-base；删属性/槽位/恢复默认/回滚版本全部走确认弹窗；已建成字段键输入锁定。
