@@ -481,3 +481,4 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **标准化销项**（ui-standard.md 差距 #3–#10）：裸色全量 token 化（destructive/foreground）、徽章统一 text-xs/px-2.5、抽屉抽 drawerWrap/drawerPanel/safeBottom 常量、筛选 sheet 下拉换 inputClsLg（text-base 防 iOS 缩放）、骨架/error/empty 换共享常量、底部弹层 Transition 统一 sheet、筛选 sheet z-40→z-50。
 - **交互补全**：移动筛选 sheet 新增排序区块（9 键 + ↑↓ 方向，复用桌面 sort 状态）；分页条移动端只留 上一页/x/y/下一页，「全部=100000」仅桌面。
 - **深色巡检**：tasks 开关滑块 bg-white 改 bg-primary-foreground（随主题反色，修深色下滑块隐形）。
+- **隐藏售罄开关**（补充）：页头「售罄 N」徽章变开关按钮（eye-off/eye 图标），默认隐藏售罄；接入 view/applyView 视图同步（URL `hideSold=0` + localStorage，absent 回落默认 true）；计数改用过滤前的 soldCount 避免徽章死锁；`data=soldout` 视图（待办页跳转）下开关自动失效并置灰。

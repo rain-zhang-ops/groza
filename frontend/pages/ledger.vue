@@ -31,6 +31,8 @@
   import MdiContentPaste from "~icons/mdi/content-paste";
   import MdiFormTextbox from "~icons/mdi/form-textbox";
   import MdiDotsHorizontal from "~icons/mdi/dots-horizontal";
+  import MdiEyeOutline from "~icons/mdi/eye-outline";
+  import MdiEyeOffOutline from "~icons/mdi/eye-off-outline";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -711,6 +713,7 @@
   const msg = ref("");
   const countMode = ref(false);
   const onlyLow = ref(false);
+  const hideSoldOut = ref(true);
   const dataFilter = ref("");
   const showSummary = ref(false);
   const summaryDim = ref<string>("brand");
@@ -937,6 +940,7 @@
     return {
       brand: filter.brand, size: filter.size, spec: filter.spec, color: filter.color, material: filter.material, q: filter.q, series: filter.series,
       onlyLow: onlyLow.value ? "1" : "", data: dataFilter.value, count: countMode.value ? "1" : "",
+      hideSold: hideSoldOut.value ? "" : "0",
       sort: sort.key, dir: String(sort.dir),
     };
   }
@@ -944,6 +948,7 @@
     filter.brand = v.brand || ""; filter.size = v.size || ""; filter.spec = v.spec || "";
     filter.color = v.color || ""; filter.material = v.material || ""; filter.q = v.q || ""; filter.series = v.series || "";
     onlyLow.value = v.onlyLow === "1" || v.onlyLow === true;
+    hideSoldOut.value = v.hideSold !== "0" && v.hideSold !== false;
     dataFilter.value = v.data || "";
     countMode.value = v.count === "1" || v.count === true;
     sort.key = v.sort || "name"; sort.dir = v.dir === "-1" || v.dir === -1 ? -1 : 1;
@@ -959,8 +964,8 @@
       localStorage.setItem("hb.ledger.view", JSON.stringify(v));
     }, 200);
   }
-  watch([filter, sort, onlyLow, countMode, dataFilter], syncView, { deep: true });
-  watch([filter, sort, onlyLow, countMode, dataFilter, pageSize], () => { page.value = 1; }, { deep: true });
+  watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter], syncView, { deep: true });
+  watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter, pageSize], () => { page.value = 1; }, { deep: true });
   watch(cols, () => localStorage.setItem("hb.ledger.cols", JSON.stringify(cols)), { deep: true });
   let histTimer: number | undefined;
   watch(() => filter.q, (v) => { window.clearTimeout(histTimer); histTimer = window.setTimeout(() => pushSearch(v || ""), 1500); });
@@ -1157,7 +1162,7 @@
     if (savedCols) { try { Object.assign(cols, JSON.parse(savedCols)); } catch (_e) { /* ignore */ } }
     const savedPresets = localStorage.getItem("hb.ledger.presets");
     if (savedPresets) { try { presets.value = JSON.parse(savedPresets); } catch (_e) { /* ignore */ } }
-    const hasQ = Object.keys(route.query).some(k => ["brand", "size", "spec", "color", "q", "series", "onlyLow", "count", "data", "sort", "dir"].includes(k));
+    const hasQ = Object.keys(route.query).some(k => ["brand", "size", "spec", "color", "q", "series", "onlyLow", "hideSold", "count", "data", "sort", "dir"].includes(k));
     if (hasQ) applyView(route.query as Record<string, any>);
     else {
       const saved = localStorage.getItem("hb.ledger.view");
@@ -1523,7 +1528,7 @@
       default: return true;
     }
   }
-  const filtered = computed(() => rows.value.filter(r =>
+  const filteredBase = computed(() => rows.value.filter(r =>
     (!filter.brand || r.brand === filter.brand) &&
     (!filter.size || r.size === filter.size) &&
     (!filter.spec || r.spec === filter.spec) &&
@@ -1535,6 +1540,11 @@
     (!onlyLow.value || isLow(r)) &&
     dataMatch(r),
   ));
+  // data=soldout 是专门查看售罄的视图，此时隐藏售罄不生效
+  const filtered = computed(() => filteredBase.value.filter(r =>
+    !hideSoldOut.value || dataFilter.value === "soldout" || !isSoldOut(r),
+  ));
+  const soldCount = computed(() => filteredBase.value.filter(isSoldOut).length);
   const sorted = computed(() => {
     const k = sort.key, dir = sort.dir;
     return [...filtered.value].sort((a, b) => {
@@ -1880,7 +1890,7 @@
           <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
             <span class="h-1.5 w-1.5 rounded-full animate-pulse" :class="onlyLow ? 'bg-white' : 'bg-amber-500'"></span>待补货 {{ totals.low }}
           </button>
-          <span v-if="totals.sold" :class="badgeCls">售罄 {{ totals.sold }}</span>
+          <button v-if="soldCount" class="inline-flex items-center gap-1 transition active:scale-95 disabled:opacity-50" :class="hideSoldOut ? badgeCls : 'rounded-full border border-primary bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary'" :disabled="dataFilter === 'soldout'" :title="dataFilter === 'soldout' ? '当前正在查看售罄物品' : ''" @click="hideSoldOut = !hideSoldOut"><MdiEyeOffOutline v-if="hideSoldOut" class="h-3.5 w-3.5" /><MdiEyeOutline v-else class="h-3.5 w-3.5" />售罄 {{ soldCount }}</button>
           <div class="ml-auto flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap">
             <!-- 桌面完整操作 -->
             <div class="hidden items-center gap-2 md:flex">
