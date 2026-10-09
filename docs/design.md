@@ -546,3 +546,9 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **命中交互**（确认框内嵌，不自动裁决）：强命中出琥珀色拦截条（缩略图+「疑似已有物品 · 相似度 N%」+库存），主按钮变「并入库存 +1」（复用 step() 含撤销记录）与「定位查看」（设 filter.q），「仍要新增」降级为次按钮；弱命中灰条提示+定位；队列内互查（距离 ≤6）提示同批重复。
 - **指纹沉淀**：AI 新增成功、并入已有（照片作为该物品额外附件，一物多指纹）、手动换封面，三处都会自动登记指纹。
 - **清理**：aiReject/aiCreateOne/aiAdvance/clearAIDone 同步清理 aiHashes；测试脚本 tests/test_phash_dedup.py（端到端：索引→同款重拍→拦截条→并入→库存+1），副作用清理 tests/cleanup_phash_test.py。
+
+### 服务端共享指纹库（17 补）
+- **问题**：指纹索引存 localStorage，每台设备各自扫描全量图片建库，iPhone 首次要等几十秒。
+- **方案**：新增 `backend/phash.go`（GET/PUT `/api/v1/gx/phashes`，按集合存 `/data/biz/phashes-<组ID>.json`，biz JSON 模式，PUT 增量合并+16 位 hex 格式校验，同键以服务端已有为准——同一浏览器算法产物必然一致）。前端：onMounted 先 pull 共享库再 buildPhashIndex（只补算缺的）；本地新增指纹（建索引/AI 新增/并入/换封面）防抖 2.5s 回推。
+- **补丁**：routes-phash 独立块，锚点复用 routes-ledger 注入的 gx/config/restore 行（新树由 6 号块先注入、复用树已有该行，两种路径都适用；独立 marker 避免 rep_any 锚点冻结问题）。
+- **验证**：tests/test_phash_sync.py——全量 117 张建库 → 服务端写入 117 → 全新浏览器上下文（模拟新设备）直接拉到 117/117 零重算。

@@ -483,6 +483,21 @@ def main():
             open(p, "w", encoding="utf-8").write(s.replace(anchor, add, 1))
             done("routes-ledger 注入 /ledger /ledger/{id} /trash2 /ui-options /ai/recognize /trash")
 
+    # ---- 6b. 后端路由：图片指纹库（锚点为 routes-ledger 注入的 restore 行，新旧源码树均适用）----
+    s = open(p, encoding="utf-8").read()
+    if "/gx/phashes" in s:
+        skip("routes-phash")
+    else:
+        anchor = '\t\tr.Post("/gx/config/restore", chain.ToHandlerFunc(a.handleGxConfigRestore(), userMW...))'
+        add = anchor + ("\n"
+                        '\t\tr.Get("/gx/phashes", chain.ToHandlerFunc(a.handlePhashesGet(), userMW...))\n'
+                        '\t\tr.Put("/gx/phashes", chain.ToHandlerFunc(a.handlePhashesPut(), userMW...))')
+        if anchor not in s:
+            fail("routes-phash", "gx/config/restore 锚点未找到")
+        else:
+            open(p, "w", encoding="utf-8").write(s.replace(anchor, add, 1))
+            done("routes-phash 注入 /gx/phashes")
+
     # ---- 7. 集合页「选项配置」tab ----
     coll = f"{fe}/pages/collection/index.vue"
     c = open(coll, encoding="utf-8").read()

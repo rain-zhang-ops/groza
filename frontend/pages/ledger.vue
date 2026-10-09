@@ -533,6 +533,28 @@
   const phashStore = reactive<{ h: Record<string, string>; o: Record<string, string> }>({ h: {}, o: {} });
   try { Object.assign(phashStore, JSON.parse(localStorage.getItem(PHASH_KEY) || "{}")); } catch (_e) { /* ignore */ }
   function persistPhash() { try { localStorage.setItem(PHASH_KEY, JSON.stringify({ h: phashStore.h, o: phashStore.o })); } catch (_e) { /* ignore */ } }
+  // 服务端共享指纹库：全设备统一拉取，本地新算的指纹防抖回推
+  let phashPushTimer: number | undefined;
+  function schedulePhashPush() {
+    if (!import.meta.client) return;
+    if (phashPushTimer) window.clearTimeout(phashPushTimer);
+    phashPushTimer = window.setTimeout(() => { void pushPhashes(); }, 2500);
+  }
+  async function pushPhashes() {
+    try {
+      await $fetch("/api/v1/gx/phashes", { method: "PUT", body: { h: phashStore.h, o: phashStore.o } });
+    } catch (_e) { /* 下次有变更时再推 */ }
+  }
+  async function pullPhashes() {
+    try {
+      const lib = await $fetch<{ h?: Record<string, string>; o?: Record<string, string> }>("/api/v1/gx/phashes");
+      let added = 0;
+      for (const k of Object.keys(lib.h || {})) {
+        if (!phashStore.h[k]) { phashStore.h[k] = (lib.h || {})[k]; if (lib.o && lib.o[k]) phashStore.o[k] = lib.o[k]; added++; }
+      }
+      if (added) persistPhash();
+    } catch (_e) { /* 无服务端库时静默（旧版本） */ }
+  }
   function rowById(id: string): Row | undefined { return rows.value.find(r => r.id === id); }
   function matchImgUrl(id: string): string { const r = rowById(id); return r && r.thumb ? imgUrl(r) : ""; }
   function phashSim(dist: number): number { return Math.max(0, Math.round((1 - dist / 64) * 100)); }
@@ -573,7 +595,7 @@
         } catch (_e) { /* 单张失败跳过 */ }
         await new Promise(res => setTimeout(res, 40));
       }
-      if (dirty) persistPhash();
+      if (dirty) { persistPhash(); schedulePhashPush(); }
     } finally {
       phashBusy = false;
     }
@@ -693,7 +715,7 @@
       if (t) { t.status = "完成"; t.msg = row.name; }
       rows.value.unshift(row);
       trashed[row.id] = false; delete trashEntries[row.id];
-      if (row.thumb && c.hash) { phashStore.h[row.thumb] = c.hash; phashStore.o[row.thumb] = row.id; persistPhash(); }
+      if (row.thumb && c.hash) { phashStore.h[row.thumb] = c.hash; phashStore.o[row.thumb] = row.id; persistPhash(); schedulePhashPush(); }
       markSaved(row.id);
     } catch (err) {
       const t = aiTasks.value.find(x => x.id === c.id);
@@ -745,7 +767,7 @@
       const d = await $fetch<Record<string, any>>(`/api/v1/entities/${row.id}/attachments`, { method: "POST", body: form });
       const atts = (d.attachments || []) as Array<Record<string, any>>;
       const att = atts.find(a => a.name === "ai.jpg") || atts[atts.length - 1];
-      if (att?.id && c.hash) { phashStore.h[att.id] = c.hash; phashStore.o[att.id] = row.id; persistPhash(); }
+      if (att?.id && c.hash) { phashStore.h[att.id] = c.hash; phashStore.o[att.id] = row.id; persistPhash(); schedulePhashPush(); }
     } catch (_e) { /* 附件沉淀失败不影响并入 */ }
     const t = aiTasks.value.find(x => x.id === c.id);
     if (t) { t.status = "完成"; t.msg = "并入 " + row.name; }
@@ -1240,7 +1262,7 @@
       target.thumb = d.imageId || d.thumbnailId || target.thumb;
       if (target.thumb) {
         const aid = target.thumb;
-        void computePhash(blob).then(h => { phashStore.h[aid] = h; phashStore.o[aid] = target.id; persistPhash(); }).catch(() => { /* 指纹失败不影响上传 */ });
+        void computePhash(blob).then(h => { phashStore.h[aid] = h; phashStore.o[aid] = target.id; persistPhash(); schedulePhashPush(); }).catch(() => { /* 指纹失败不影响上传 */ });
       }
       flash("已上传封面");
     } catch (err2) {
@@ -1306,7 +1328,7 @@
     await load();
     await nextTick();
     onScrollLoadMore();
-    void buildPhashIndex();
+    void pullPhashes().then(() => buildPhashIndex());
   });
   onBeforeUnmount(() => {
     window.removeEventListener("hb:offline-queue", syncOq);
