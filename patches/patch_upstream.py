@@ -566,17 +566,63 @@ def main():
         '  import MdiFileTree from "~icons/mdi/file-tree";',
         '  import MdiFileTree from "~icons/mdi/file-tree";\n  import MdiFormTextbox from "~icons/mdi/form-textbox";',
         "collection-fields-icon")
+    # 「库存架构」tab 收敛为唯一最终形态（历史注入曾叠出 配置→/templates + 库存架构→/collection/fields 两个重复 tab）
+    import re as _re
+    c = open(coll, encoding="utf-8").read()
+    fields_final = '    {\n      id: "fields",\n      label: "库存架构",\n      to: "/collection/fields",\n      icon: MdiFormTextbox,\n    },\n'
+    old_entries = _re.findall(r'    \{\n      id: "fields",\n.*?\n    \},\n', c, flags=_re.S)
+    if old_entries == [fields_final]:
+        skip("collection-fields-tab-unify")
+    else:
+        for e in old_entries:
+            c = c.replace(e, "", 1)
+        loc_tab = '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n'
+        if loc_tab not in c:
+            fail("collection-fields-tab-unify", "分类 tab 锚点未找到")
+        else:
+            open(coll, "w", encoding="utf-8").write(c.replace(loc_tab, loc_tab + fields_final, 1))
+            done("collection-fields-tab-unify 字段 tab 收敛唯一「库存架构」")
+
+    # ---- 7c. 集合页纯粹化：删「管理集合」卡与 tab 条，布局按路由自动出页面标题 ----
+    s = open(coll, encoding="utf-8").read()
+    if "currentTabLabel" in s:
+        skip("collection-pure-header")
+    elif "  ]);\n\n  const { selectedCollection, load: reloadCollections } = useCollections();" not in s:
+        fail("collection-pure-header", "tabs 锚点未找到")
+    else:
+        # 先改脚本，再在新串上计算模板位置（顺序颠倒会导致旧偏移切割错位）
+        s = s.replace(
+            "  ]);\n\n  const { selectedCollection, load: reloadCollections } = useCollections();",
+            "  ]);\n\n"
+            "  const currentTabLabel = computed(() => {\n"
+            "    const cur = tabs.value.find(x => x.to === currentPath.value);\n"
+            "    return cur ? t(cur.label) : \"\";\n"
+            "  });\n\n"
+            "  const { selectedCollection, load: reloadCollections } = useCollections();", 1)
+        tstart = s.find("    <section>\n      <Card")
+        tend = s.find("\n    </section>", tstart) if tstart >= 0 else -1
+        bpos = s.find("<Button", s.find('id="collection-header-actions"', tstart)) if tstart >= 0 else -1
+        bstart = s.rfind("\n", 0, bpos) + 1 if bpos >= 0 else -1
+        bend = s.find("\n          </Button>", bpos) if bpos >= 0 else -1
+        if tstart < 0 or tend < 0 or bstart <= 0 or bend < 0:
+            fail("collection-pure-header", "模板锚点未找到")
+        else:
+            btn = s[bstart:bend + len("\n          </Button>")]
+            new_section = (
+                "    <section>\n"
+                "      <div class=\"mb-4 mt-1 flex flex-wrap items-center gap-2\">\n"
+                "        <h1 class=\"font-display text-2xl font-medium tracking-tight\">{{ currentTabLabel || t(\"menu.collection\") }}</h1>\n"
+                "        <div id=\"collection-header-actions\" class=\"ml-auto flex items-center gap-1\">\n"
+                + btn + "\n"
+                "        </div>\n"
+                "      </div>\n")
+            s = s[:tstart] + new_section + s[tend:]
+            open(coll, "w", encoding="utf-8").write(s)
+            done("collection-pure-header 集合页去 tab 条 + 自动标题")
     rep(coll,
-        '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
-        '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n    {\n      id: "fields",\n      label: "配置",\n      to: "/templates",\n      icon: MdiFormTextbox,\n    },',
-        "collection-fields-tab")
-    rep_any(coll,
-        ['      id: "fields",\n      label: "库存架构",\n      to: "/collection/fields",',
-         '      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
-         '      id: "fields",\n      label: "配置",\n      to: "/templates",',
-         '      id: "fields",\n      label: "字段",\n      to: "/templates",'],
-        '      id: "fields",\n      label: "库存架构",\n      to: "/collection/fields",',
-        "collection-fields-tab-target")
+        '<Title>{{ t("menu.collection_options") }}</Title>',
+        '<Title>{{ currentTabLabel || t("menu.collection_options") }}</Title>',
+        "collection-title-current")
     dv_t = open(dv, encoding="utf-8").read()
     tpl_block = ('    {\n'
                  '      icon: MdiFileDocumentMultiple,\n'
@@ -705,6 +751,13 @@ def main():
         '    },\n'
         '    {\n'
         '      icon: MdiFileTree,\n'
+        '      id: 9064, group: "配置",\n'
+        '      active: computed(() => route.path === "/locations"),\n'
+        '      name: computed(() => "分类"),\n'
+        '      to: "/locations",\n'
+        '    },\n'
+        '    {\n'
+        '      icon: MdiShapeOutline,\n'
         '      id: 9081, group: "配置",\n'
         '      active: computed(() => route.path === "/collection/entity-types"),\n'
         '      name: computed(() => "结构"),\n'
@@ -753,6 +806,10 @@ def main():
         '      to: "/profile",\n'
         '    },\n'
     )
+    rep(dv,
+        'import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";',
+        'import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";\n  import MdiShapeOutline from "~icons/mdi/shape-outline";',
+        "nav-icon-shape-outline")
     navgroups_src = (
         '\n\n  const navGroups = computed(() => {\n'
         '    const out: { label: string; items: typeof nav }[] = [];\n'
@@ -810,7 +867,7 @@ def main():
         '        </SidebarContent>'
     )
     s_nav = open(dv, encoding="utf-8").read()
-    if '"库存架构"' in s_nav and "navGroups" in s_nav:
+    if 'id: 9064' in s_nav and "navGroups" in s_nav:
         skip("nav-restructure")
     else:
         marker = "  }[] = ["
@@ -1154,10 +1211,7 @@ def main():
     redir_new = '  definePageMeta({\n    middleware: ["auth", () => navigateTo("/collection/fields", { replace: true })],\n  });'
     rep(f"{fe}/pages/templates.vue", redir_old, redir_new, "tpl-list-redirect")
     rep(f"{fe}/pages/template/[id].vue", redir_old, redir_new, "tpl-detail-redirect")
-    rep(f"{fe}/pages/collection/index.vue",
-        '              <span class="hidden sm:block">{{ t(tab.label) }}</span>',
-        '              <span class="block">{{ t(tab.label) }}</span>',
-        "collection-tabs-label-mobile")
+    # （已废弃）collection-tabs-label-mobile：tab 条已随 collection-pure-header 移除
 
     if FAILS:
         print(f"\n共 {len(FAILS)} 个补丁失败: {', '.join(FAILS)}", file=sys.stderr)

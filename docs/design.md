@@ -590,3 +590,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **实现**：nav_body 重写（组序=数组首现序）；nav-restructure 幂等守卫改认新标记「库存架构」（旧树含「概览」会跳过，必须换标记才能重打）；zh-CN locale 补 `collection.tabs` 改名（页签条与侧栏同源一致）；集合页 tab 历史注入值迁移（选项配置→选项走 rep_any 更名块；fields tab-target 的 new 直接收敛为「库存架构」，olds 冻结全部历史变体）。fields.vue 页标题同步「库存架构」。
 - **教训**：tab 更名要注意下游补丁锚点连锁——collection-locations-tab 锚定在 ui-options 页签文本上，改名前必须先插迁移块，否则第二轮构建 FAIL；所有更名均已验证二次构建幂等。
 - **验证**：桌面 1280px 侧栏全量渲染（15 项 + 5 组标，内容区 overflow-auto 可滚到底见管理组与「我的」）；iPhone 390px 抽屉完整分组 ✓；集合页 tab 条命名一致 ✓。
+
+### 集合页纯粹化：去页内 tab 条，布局按路由出标题（22）
+- **问题**：库存架构等集合页顶部挂一条混合全部组的 tab 条（成员/邀请/通知/集合设置/结构…），与侧栏分组矛盾、不纯粹；且历史补丁链叠出了两个 fields 重复 tab（配置→/templates 与 库存架构→/collection/fields 并存）。
+- **方案**：导航唯一入口收口到侧栏/抽屉。collection/index.vue 删「管理集合 - {name}」卡与 ButtonGroup tab 条；页头只剩 衬线 h1（新增 `currentTabLabel` computed：按 route.path 命中 tabs 数组得当前页名）+ 右侧动作区（保留 `#collection-header-actions` teleport 目标与退出/删除集合按钮）。tabs 数组退化为路由→标题映射表。fields/ui-options 的 Teleport 页头按钮不受影响。
+- **入口兜底**：/locations（分类）此前唯一入口就是被删的 tab——侧栏「配置」组补「分类」项（MdiFileTree；「结构」改 MdiShapeOutline 避让，与旧 tab 图标语义一致）。
+- **tab 数组收敛**：fields tab 改为幂等 unify 块（正则清掉全部 id:"fields" 历史条目 → 注入唯一最终形态），取代脆弱的「锚定追加 + rep_any 收敛」两段式——后者在收敛态上会重复追加（重复 tab 就是这么来的）。
+- **补丁教训（重要）**：同一串上「先 replace 再按旧偏移 splice」必错位——本轮因此切坏构建树的 collection/index.vue（吃掉 `</script>/<template>/<BaseContainer>/<Title>` 并复制了按钮残片），手工修复树文件后纠正补丁顺序（先脚本替换、再在新串上算模板位置）。失效块 `collection-tabs-label-mobile`（锚定已删的 tab 标记）随之一并废弃——**删除 HTML 结构类补丁时，必须 grep 下游锚定该结构的补丁块一并处理**。
+- **验证**：/collection/fields 无 tab 条/无管理集合卡/标题=库存架构/teleport 保存按钮存活；/collection/members 标题=成员；抽屉含「分类」且 /locations 可达；补丁二次执行全 SKIP 无 FAIL。8 项断言全过。
