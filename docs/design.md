@@ -534,3 +534,7 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - 新增共享组件 `frontend/components/GxThumb.vue`：加载中显示 muted 脉冲骨架 + 图片图标（替代 opacity-0 空白，用户不再以为没图）；`img.decode()` 完成后 300ms 淡入；加载失败显示 image-off 占位图标（不再空转脉冲）。
 - 替换点：台账卡片/紧凑列表/桌面表格缩略图、发货台拣选、出库拣选（顺带去掉了出库残留的 loading="lazy"）。ledger 的 revealImg 死代码删除。
 - **坑**：上游 nuxt.config `components: { dirs: [] }` 关闭了自动扫描——组件必须显式 `import GxThumb from "~/components/GxThumb.vue"`（生产构建把 resolveComponent 失败静默降级，页面零报错零图片，极难排查）；rebuild.sh 构建前固定清 `.nuxt` 与 `node_modules/.cache/nuxt`（复用目录的扫描缓存会让新组件/composable 不进注册表）。
+
+### 图片加载动画补齐（16 补）
+- 覆盖扩展到：图片抽屉（多图，GxThumb h-28 w-full）、大图预览（居中 spinner，@load 淡入，preview 切换重置 previewLoaded）、入库页拣选（残留 loading=lazy 一并去除）。
+- 说明：已缓存图片瞬时显示不出动画是预期行为；动画只在真实慢加载时出现。验证用请求拦截（abort/延迟）确定性复现。

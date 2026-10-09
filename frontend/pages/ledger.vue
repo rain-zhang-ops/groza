@@ -724,6 +724,8 @@
   const showSummary = ref(false);
   const summaryDim = ref<string>("brand");
   const preview = ref<string | null>(null);
+  const previewLoaded = ref(false);
+  watch(preview, () => { previewLoaded.value = false; });
   const undoLast = ref<{ label: string; items: UndoItem[] } | null>(null);
   const filterOpen = ref(false);
   const moreFilters = ref(false);
@@ -2624,7 +2626,8 @@
     <!-- 图片预览 -->
     <Transition name="fade">
       <div v-if="preview" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" @click="preview = null">
-        <img :src="preview" class="animate-pop max-h-[90vh] max-w-[90vw] rounded-xl shadow-2xl" />
+        <span v-if="!previewLoaded" class="absolute left-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+        <img :src="preview" class="animate-pop max-h-[90vh] max-w-[90vw] rounded-xl shadow-2xl transition-opacity duration-200" :class="previewLoaded ? 'opacity-100' : 'opacity-0'" @load="previewLoaded = true" />
       </div>
     </Transition>
 
@@ -2744,7 +2747,7 @@
           </div>
           <div class="grid grid-cols-3 gap-2">
             <div v-for="a in galleryImgs" :key="a.id" class="relative overflow-hidden rounded-lg border">
-              <img :src="attUrl(a.id)" class="h-28 w-full object-cover" alt="" />
+              <GxThumb :src="attUrl(a.id)" box-class="h-28 w-full" />
               <button v-if="!a.primary" class="absolute left-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-xs text-white" @click="setPrimaryImg(a)">设封面</button>
               <span v-else class="absolute left-1 top-1 rounded-md bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">封面</span>
               <button class="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-black/60 text-white" @click="delGalleryImg(a)"><MdiDeleteForever class="h-3.5 w-3.5" /></button>

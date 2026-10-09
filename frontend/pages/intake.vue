@@ -2,6 +2,7 @@
   const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
   import { toast } from "@/components/ui/sonner";
   import MdiAlertOutline from "~icons/mdi/alert-outline";
+  import GxThumb from "~/components/GxThumb.vue";
 
   definePageMeta({
     middleware: ["auth"],
@@ -235,7 +236,7 @@
               class="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-muted/60 active:scale-[0.99]"
               @click="addItem(r)"
             >
-              <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" class="h-9 w-9 shrink-0 rounded-md border object-cover" alt="" />
+              <GxThumb v-if="r.thumb" :src="imgUrl(r)" box-class="h-9 w-9 rounded-md border" />
               <span class="min-w-0 flex-1 truncate">{{ r.name }}</span>
               <span class="shrink-0 text-xs text-muted-foreground">{{ [r.brand, r.size, r.spec].filter(Boolean).join(" ") }}</span>
               <span class="shrink-0 text-xs tabular-nums text-muted-foreground">库存 {{ r.qty }}</span>
