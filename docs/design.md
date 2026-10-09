@@ -499,3 +499,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **删除 /intake-records、/outbound-records**：与单据页功能重叠 90% 且不在菜单（仅入/出库页头链接可达）。入库页头去掉「入库记录」；出库页「单据」链接带 `?kind=outbound` 直达出库 Tab。旧路由 404，rebuild.sh/check.sh 同步除名（含清理前端复用目录残留 `rm -f`）。
 - **单据页 kind 参数化**：`?kind=` 初始化 Tab、切 Tab `router.replace` 同步 URL、监听 query 变化（页内跳转也生效）。
 - **落库不再静默**：gxRecordDocument 改返回 error；gxRecordDocumentLogged 统一兜底（log.Printf 进 docker logs + 异步触发对账）；gxRepairDocumentsFromBiz 以 biz JSON 权威存储为准幂等回填缺失单据并同步回滚状态；单据页首次查询 sync.Once 自动对账一次。上线即回填 12 条历史遗漏（150→162 条），当前 0 缺失。盘点调整无 biz JSON 副本，不在对账范围（失败仅日志）。
+
+### 发货台取代单据页（11）
+- **业务流**：买家下单 → 新建发货单（拣货/打包，**不动库存**）→ 发货前买家退款则「取消」（库存无影响）→ 打包完成「确认发货」才真正扣库存并生成出库单。解决发货前退款的库存污染问题。
+- **后端** `backend/ship.go`：`/biz/shipments` GET/POST + `/ship` `/cancel` `/undo` 五个接口，shipments.json 存储（biz JSON 模式），全接口幂等键；确认发货复用重构出的 `applyOutbound` 核心（库存不足明细跳过并报错、全败 400、部分成功返回 errors）；撤销发货复用 `applyOutboundRollback`（owner 权限，库存加回+出库单回滚）；审计 shipment.create/ship/cancel/undo。
+- **biz.go 重构**：applyOutbound/applyOutboundRollback 抽公共核心（行为不变，原 handler 变薄壳），发货与出库共用。
+- **前端** `frontend/pages/ship.vue`：待发货/已发货/已取消三 Tab（带计数）、待发徽章、卡片明细+合计、待发货卡实时库存不足预警（ amber）、确认/取消/撤销均走居中确认弹窗；新建发货单右侧抽屉（drawerWrap/drawerPanel）：买家/备注 + 商品搜索拣选（库存上限步进器）。
+- **单据页下线**：documents.vue 删除（用户判定无价值），侧栏「进出」组 入库/出库/**发货**（MdiPackageVariantClosed），Dock 进出项覆盖 /ship；入/出库页头 单据 链接换 发货。gx_document 表与 /gx/documents API 保留（后台审计用，不对用户暴露）。
+- **补丁教训**：rep_any/rep 的历史锚点是匹配复用目录里旧构建产物的，改 nav/dock 内容时旧变体必须冻结保留（本次新增 dock_prev、nav-group-icons 改 rep_any 三变体）。

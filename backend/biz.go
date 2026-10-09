@@ -469,6 +469,61 @@ type outboundBody struct {
 	Items  []outboundItem `json:"items"`
 }
 
+// applyOutbound 出库核心：扣库存、落出库单、审计、单据同步。
+// 发货确认与原出库创建共用。status 为建议 HTTP 状态码（400 明细全败 / 500 落盘失败）。
+func (a *app) applyOutbound(ctx services.Context, reason, note string, items []outboundItem) (*outbound, []string, int, error) {
+	ob := &outbound{ID: bizRandID(), TS: bizNow(), Reason: strings.TrimSpace(reason), Note: strings.TrimSpace(note)}
+	var errs []string
+
+	for _, it := range items {
+		eid, err := uuid.Parse(it.EntityID)
+		if err != nil || it.Count <= 0 {
+			errs = append(errs, "明细无效: "+it.EntityID)
+			continue
+		}
+		full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+		if err != nil {
+			errs = append(errs, "物品不存在: "+it.EntityID)
+			continue
+		}
+		newQty := full.Quantity - it.Count
+		if newQty < 0 {
+			errs = append(errs, fmt.Sprintf("库存不足(%g)：%s", full.Quantity, full.Name))
+			continue
+		}
+		upd := entityUpdateFromFull(full)
+		upd.Quantity = newQty
+		if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+			errs = append(errs, "更新失败: "+full.Name)
+			continue
+		}
+		ob.Items = append(ob.Items, outboundItem{EntityID: it.EntityID, Name: full.Name, Count: it.Count})
+	}
+
+	if len(ob.Items) == 0 {
+		return nil, errs, http.StatusBadRequest, fmt.Errorf("没有成功出库的明细：%s", strings.Join(errs, "；"))
+	}
+
+	os_ := loadOutbounds()
+	os_ = append([]outbound{*ob}, os_...)
+	if err := saveOutbounds(os_); err != nil {
+		return nil, errs, http.StatusInternalServerError, err
+	}
+	eids := make([]string, 0, len(ob.Items))
+	for _, it := range ob.Items {
+		eids = append(eids, it.EntityID)
+	}
+	auditLogG(ctx.GID.String(), "outbound.create", map[string]any{"outboundId": ob.ID, "items": len(ob.Items), "reason": ob.Reason, "entityIds": eids})
+	{
+		lines := make([]gxDocLine, 0, len(ob.Items))
+		for _, it := range ob.Items {
+			lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: -float64(it.Count)})
+		}
+		gxRecordDocumentLogged(ctx.GID.String(), "outbound", ob.ID, ob.Reason, ob.Note, "posted", ob.TS, lines)
+	}
+	return ob, errs, http.StatusOK, nil
+}
+
 func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		if err := a.requirePerm(r, "editorCanOutbound", "无出库权限"); err != nil {
@@ -487,54 +542,9 @@ func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 		}
 
 		ctx := services.NewContext(r.Context())
-		ob := &outbound{ID: bizRandID(), TS: bizNow(), Reason: strings.TrimSpace(body.Reason), Note: strings.TrimSpace(body.Note)}
-		var errs []string
-
-		for _, it := range body.Items {
-			eid, err := uuid.Parse(it.EntityID)
-			if err != nil || it.Count <= 0 {
-				errs = append(errs, "明细无效: "+it.EntityID)
-				continue
-			}
-			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-			if err != nil {
-				errs = append(errs, "物品不存在: "+it.EntityID)
-				continue
-			}
-			newQty := full.Quantity - it.Count
-			if newQty < 0 {
-				errs = append(errs, fmt.Sprintf("库存不足(%g)：%s", full.Quantity, full.Name))
-				continue
-			}
-			upd := entityUpdateFromFull(full)
-			upd.Quantity = newQty
-			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-				errs = append(errs, "更新失败: "+full.Name)
-				continue
-			}
-			ob.Items = append(ob.Items, outboundItem{EntityID: it.EntityID, Name: full.Name, Count: it.Count})
-		}
-
-		if len(ob.Items) == 0 {
-			return validate.NewRequestError(fmt.Errorf("没有成功出库的明细：%s", strings.Join(errs, "；")), http.StatusBadRequest)
-		}
-
-		os_ := loadOutbounds()
-		os_ = append([]outbound{*ob}, os_...)
-		if err := saveOutbounds(os_); err != nil {
-			return validate.NewRequestError(err, http.StatusInternalServerError)
-		}
-		eids := make([]string, 0, len(ob.Items))
-		for _, it := range ob.Items {
-			eids = append(eids, it.EntityID)
-		}
-		auditLogG(ctx.GID.String(), "outbound.create", map[string]any{"outboundId": ob.ID, "items": len(ob.Items), "reason": ob.Reason, "entityIds": eids})
-		{
-			lines := make([]gxDocLine, 0, len(ob.Items))
-			for _, it := range ob.Items {
-				lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: -float64(it.Count)})
-			}
-			gxRecordDocumentLogged(ctx.GID.String(), "outbound", ob.ID, ob.Reason, ob.Note, "posted", ob.TS, lines)
+		ob, errs, status, err := a.applyOutbound(ctx, body.Reason, body.Note, body.Items)
+		if err != nil {
+			return validate.NewRequestError(err, status)
 		}
 		resp := map[string]any{"outbound": ob, "errors": errs}
 		idemStore(key, resp)
@@ -544,6 +554,57 @@ func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 
 type outboundRollbackBody struct {
 	OutboundID string `json:"outboundId"`
+}
+
+// applyOutboundRollback 回滚核心：库存加回、标记已回滚、审计、单据同步。
+// 出库回滚与发货撤销共用。
+func (a *app) applyOutboundRollback(ctx services.Context, outboundID string) (*outbound, []string, int, error) {
+	os_ := loadOutbounds()
+	idx := -1
+	for i, v := range os_ {
+		if v.ID == outboundID {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return nil, nil, http.StatusNotFound, fmt.Errorf("出库单不存在")
+	}
+	t := os_[idx]
+	if t.RolledBack {
+		return nil, nil, http.StatusConflict, fmt.Errorf("该出库单已回滚")
+	}
+
+	var errs []string
+	for _, it := range t.Items {
+		eid, err := uuid.Parse(it.EntityID)
+		if err != nil {
+			continue
+		}
+		full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+		if err != nil {
+			errs = append(errs, "物品不存在，跳过: "+it.Name)
+			continue
+		}
+		upd := entityUpdateFromFull(full)
+		upd.Quantity = full.Quantity + it.Count
+		if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+			errs = append(errs, "更新失败: "+it.Name)
+			continue
+		}
+	}
+	t.RolledBack = true
+	os_[idx] = t
+	if err := saveOutbounds(os_); err != nil {
+		return nil, errs, http.StatusInternalServerError, err
+	}
+	eids := make([]string, 0, len(t.Items))
+	for _, it := range t.Items {
+		eids = append(eids, it.EntityID)
+	}
+	auditLogG(ctx.GID.String(), "outbound.rollback", map[string]any{"outboundId": t.ID, "items": len(t.Items), "entityIds": eids})
+	gxMarkRolledBack(ctx.GID.String(), "outbound", t.ID)
+	return &t, errs, http.StatusOK, nil
 }
 
 func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
@@ -560,52 +621,11 @@ func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
 			return idemServe(w, cached)
 		}
 
-		os_ := loadOutbounds()
-		idx := -1
-		for i, v := range os_ {
-			if v.ID == body.OutboundID {
-				idx = i
-				break
-			}
-		}
-		if idx < 0 {
-			return validate.NewRequestError(fmt.Errorf("出库单不存在"), http.StatusNotFound)
-		}
-		t := os_[idx]
-		if t.RolledBack {
-			return validate.NewRequestError(fmt.Errorf("该出库单已回滚"), http.StatusConflict)
-		}
-
 		ctx := services.NewContext(r.Context())
-		var errs []string
-		for _, it := range t.Items {
-			eid, err := uuid.Parse(it.EntityID)
-			if err != nil {
-				continue
-			}
-			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-			if err != nil {
-				errs = append(errs, "物品不存在，跳过: "+it.Name)
-				continue
-			}
-			upd := entityUpdateFromFull(full)
-			upd.Quantity = full.Quantity + it.Count
-			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-				errs = append(errs, "更新失败: "+it.Name)
-				continue
-			}
+		t, errs, status, err := a.applyOutboundRollback(ctx, body.OutboundID)
+		if err != nil {
+			return validate.NewRequestError(err, status)
 		}
-		t.RolledBack = true
-		os_[idx] = t
-		if err := saveOutbounds(os_); err != nil {
-			return validate.NewRequestError(err, http.StatusInternalServerError)
-		}
-		eids := make([]string, 0, len(t.Items))
-		for _, it := range t.Items {
-			eids = append(eids, it.EntityID)
-		}
-		auditLogG(ctx.GID.String(), "outbound.rollback", map[string]any{"outboundId": t.ID, "items": len(t.Items), "entityIds": eids})
-		gxMarkRolledBack(ctx.GID.String(), "outbound", t.ID)
 		resp := map[string]any{"outbound": t, "errors": errs}
 		idemStore(key, resp)
 		return server.JSON(w, http.StatusOK, resp)

@@ -535,8 +535,10 @@ def main():
         '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
         '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n    {\n      id: "fields",\n      label: "配置",\n      to: "/templates",\n      icon: MdiFormTextbox,\n    },',
         "collection-fields-tab")
-    rep(coll,
-        '      id: "fields",\n      label: "字段",\n      to: "/templates",',
+    rep_any(coll,
+        ['      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
+         '      id: "fields",\n      label: "配置",\n      to: "/templates",',
+         '      id: "fields",\n      label: "字段",\n      to: "/templates",'],
         '      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
         "collection-fields-tab-target")
     dv_t = open(dv, encoding="utf-8").read()
@@ -566,7 +568,12 @@ def main():
                         "\t\tr.Post(\"/biz/intake/rollback\", chain.ToHandlerFunc(a.handleBizIntakeRollback(), userMW...))\n"
                         "\t\tr.Get(\"/biz/outbounds\", chain.ToHandlerFunc(a.handleBizOutbounds(), userMW...))\n"
                         "\t\tr.Post(\"/biz/outbound\", chain.ToHandlerFunc(a.handleBizOutboundCreate(), userMW...))\n"
-                        "\t\tr.Post(\"/biz/outbound/rollback\", chain.ToHandlerFunc(a.handleBizOutboundRollback(), userMW...))")
+                        "\t\tr.Post(\"/biz/outbound/rollback\", chain.ToHandlerFunc(a.handleBizOutboundRollback(), userMW...))\n"
+                        "\t\tr.Get(\"/biz/shipments\", chain.ToHandlerFunc(a.handleBizShipments(), userMW...))\n"
+                        "\t\tr.Post(\"/biz/shipments\", chain.ToHandlerFunc(a.handleBizShipmentCreate(), userMW...))\n"
+                        "\t\tr.Post(\"/biz/shipments/ship\", chain.ToHandlerFunc(a.handleBizShipmentShip(), userMW...))\n"
+                        "\t\tr.Post(\"/biz/shipments/cancel\", chain.ToHandlerFunc(a.handleBizShipmentCancel(), userMW...))\n"
+                        "\t\tr.Post(\"/biz/shipments/undo\", chain.ToHandlerFunc(a.handleBizShipmentUndo(), userMW...))")
         pub_anchor = 'r.Get("/qrcode", chain.ToHandlerFunc(v1Ctrl.HandleGenerateQRCode(), assetMW...))'
         pub_add = pub_anchor + '\n\t\tr.Get("/biz/images/{attachment}", chain.ToHandlerFunc(a.handleBizImage()))\n\t\tr.Get("/biz/images/{attachment}/{thumb}", chain.ToHandlerFunc(a.handleBizImage()))\n\t\tr.Get("/qr", chain.ToHandlerFunc(a.handleQRPublic()))'
         if anchor not in s or pub_anchor not in s:
@@ -585,9 +592,12 @@ def main():
         'import MdiTune from "~icons/mdi/tune";',
         'import MdiTune from "~icons/mdi/tune";\n  import MdiCogOutline from "~icons/mdi/cog-outline";',
         "nav-cogoutline-icon")
-    rep(dv,
-        'import MdiCogOutline from "~icons/mdi/cog-outline";',
-        'import MdiCogOutline from "~icons/mdi/cog-outline";\n  import MdiInboxArrowDown from "~icons/mdi/inbox-arrow-down";\n  import MdiInboxArrowUp from "~icons/mdi/inbox-arrow-up";\n  import MdiAccountMultipleOutline from "~icons/mdi/account-multiple-outline";\n  import MdiEmailOutline from "~icons/mdi/email-outline";\n  import MdiBellOutline from "~icons/mdi/bell-outline";\n  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";',
+    rep_any(dv,
+        ['import MdiCogOutline from "~icons/mdi/cog-outline";\n  import MdiInboxArrowDown from "~icons/mdi/inbox-arrow-down";\n  import MdiInboxArrowUp from "~icons/mdi/inbox-arrow-up";\n  import MdiAccountMultipleOutline from "~icons/mdi/account-multiple-outline";\n  import MdiEmailOutline from "~icons/mdi/email-outline";\n  import MdiBellOutline from "~icons/mdi/bell-outline";\n  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";\n  import MdiPackageVariantClosed from "~icons/mdi/package-variant-closed";\n  import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";',
+         'import MdiCogOutline from "~icons/mdi/cog-outline";\n  import MdiInboxArrowDown from "~icons/mdi/inbox-arrow-down";\n  import MdiInboxArrowUp from "~icons/mdi/inbox-arrow-up";\n  import MdiAccountMultipleOutline from "~icons/mdi/account-multiple-outline";\n  import MdiEmailOutline from "~icons/mdi/email-outline";\n  import MdiBellOutline from "~icons/mdi/bell-outline";\n  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";\n  import MdiPackageVariantClosed from "~icons/mdi/package-variant-closed";',
+         'import MdiCogOutline from "~icons/mdi/cog-outline";\n  import MdiInboxArrowDown from "~icons/mdi/inbox-arrow-down";\n  import MdiInboxArrowUp from "~icons/mdi/inbox-arrow-up";\n  import MdiAccountMultipleOutline from "~icons/mdi/account-multiple-outline";\n  import MdiEmailOutline from "~icons/mdi/email-outline";\n  import MdiBellOutline from "~icons/mdi/bell-outline";\n  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";',
+         'import MdiCogOutline from "~icons/mdi/cog-outline";'],
+        'import MdiCogOutline from "~icons/mdi/cog-outline";\n  import MdiInboxArrowDown from "~icons/mdi/inbox-arrow-down";\n  import MdiInboxArrowUp from "~icons/mdi/inbox-arrow-up";\n  import MdiAccountMultipleOutline from "~icons/mdi/account-multiple-outline";\n  import MdiEmailOutline from "~icons/mdi/email-outline";\n  import MdiBellOutline from "~icons/mdi/bell-outline";\n  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";\n  import MdiPackageVariantClosed from "~icons/mdi/package-variant-closed";\n  import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";',
         "nav-group-icons")
     rep(dv,
         '    }[];\n  }[] = [',
@@ -630,11 +640,11 @@ def main():
         '      to: "/outbound",\n'
         '    },\n'
         '    {\n'
-        '      icon: MdiFileDocumentMultiple,\n'
+        '      icon: MdiPackageVariantClosed,\n'
         '      id: 904, group: "进出",\n'
-        '      active: computed(() => route.path === "/documents"),\n'
-        '      name: computed(() => "单据"),\n'
-        '      to: "/documents",\n'
+        '      active: computed(() => route.path === "/ship"),\n'
+        '      name: computed(() => "发货"),\n'
+        '      to: "/ship",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiTune,\n'
@@ -914,7 +924,7 @@ def main():
         + dock_item("/profile", "route.path === '/profile'", "MdiAccount", "我的")
         + dock_tail
     )
-    dock_new = (
+    dock_prev = (  # 历史版本：单据页时代的 dock_new（发货台取代前的磁盘残留）
         dock_head
         + dock_item("/tasks", "route.path === '/tasks'", "MdiClipboardCheckOutline", "待办")
         + dock_item("/ledger", "route.path === '/ledger'", "MdiMagnify", "物品")
@@ -923,7 +933,16 @@ def main():
         + dock_item("/profile", "route.path === '/profile'", "MdiAccount", "我的")
         + dock_tail
     )
-    rep_any(dv, [dock_v2, dock_v1, dock_old], dock_new, "mobile-dock")
+    dock_new = (
+        dock_head
+        + dock_item("/tasks", "route.path === '/tasks'", "MdiClipboardCheckOutline", "待办")
+        + dock_item("/ledger", "route.path === '/ledger'", "MdiMagnify", "物品")
+        + dock_item("/intake", "['/intake', '/outbound', '/ship'].includes(route.path)", "MdiTruckDeliveryOutline", "进出")
+        + dock_item("/collection/fields", "(route.path.startsWith('/collection') || route.path === '/tags')", "MdiCogOutline", "管理")
+        + dock_item("/profile", "route.path === '/profile'", "MdiAccount", "我的")
+        + dock_tail
+    )
+    rep_any(dv, [dock_new, dock_prev, dock_v2, dock_v1, dock_old], dock_new, "mobile-dock")
 
     # ---- 9c. ⌘K 命令面板（Claude 式统一入口）----
     qm = f"{fe}/components/App/QuickMenuModal.vue"
