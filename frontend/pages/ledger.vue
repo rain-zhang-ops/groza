@@ -1,5 +1,11 @@
 <script setup lang="ts">
-  const $fetch = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
+  const $fetchBase = useNuxtApp().$gxFetch as typeof globalThis.$fetch;
+  // 包一层：本页发出的任何写操作都记入 lastLocalEdit，WS 回声据此跳过整表刷新
+  const $fetch = ((url: any, opts?: any) => {
+    const m = String(opts?.method || "GET").toUpperCase();
+    if (m !== "GET") noteLocalEdit();
+    return $fetchBase(url, opts);
+  }) as typeof globalThis.$fetch;
   import { toast } from "@/components/ui/sonner";
   import { useDialog } from "@/components/ui/dialog-provider";
   import { DialogID } from "@/components/ui/dialog-provider/utils";
@@ -262,7 +268,7 @@
       const nm = r.name + "（副本）";
       if (nid) await $fetch(`/api/v1/entities/${nid}`, { method: "PATCH", body: { name: nm } }).catch(() => {});
       buzz(); flash("已复制：" + nm);
-      await load();
+      if (nid) await refreshRow(nid); else await load();
     } catch (e) { flash("复制失败：" + ((e as Error)?.message ?? String(e))); }
     finally { saving[r.id] = false; }
   }
@@ -461,7 +467,7 @@
         Object.assign(addForm, { name: "", size: "", color: "", spec: "", material: "塑料", qty: 0, purchase: null, sell: null, loc: "", autoSplit: true, keep: false });
         Object.assign(addNew, { size: false, color: false, spec: false, material: false });
       }
-      await load();
+      await refreshRow(created.id);
     } catch (e) {
       flash("新增失败：" + ((e as Error)?.message ?? String(e)));
     } finally {
@@ -1065,6 +1071,15 @@
       qty: e.quantity ?? 0, loc: parent?.name || "", serial: String(e.serial ?? e.serialNumber ?? ""), extra: {}, thumb: null, updated: e.updatedAt || "",
     } as Row;
   }
+  // 单行定向刷新：新增/变更后只拉这一条，替代整表 load()
+  async function refreshRow(id: string) {
+    try {
+      const d = await $fetch<Record<string, any>>(`/api/v1/entities/${id}`);
+      const idx = rows.value.findIndex(r => r.id === id);
+      if (idx >= 0) rows.value[idx] = toRow(d);
+      else rows.value.unshift(toRow(d));
+    } catch (_e) { /* 忽略 */ }
+  }
   async function hydrateRows(ids: string[], concurrency = 8) {
     let i = 0;
     const worker = async () => {
@@ -1517,8 +1532,8 @@
     try {
       await $fetch("/api/v1/trash2/purge", { method: "POST", body: { confirm: true, ids: [r.id] } });
       delete trashed[r.id];
+      rows.value = rows.value.filter(x => x.id !== r.id);
       buzz(30); flash("已彻底删除：" + r.name);
-      await load();
     } catch (e) { flash("彻底删除失败：" + ((e as Error)?.message ?? String(e))); }
     finally { saving[r.id] = false; }
   }
@@ -1530,8 +1545,8 @@
     try {
       await $fetch("/api/v1/trash2/purge", { method: "POST", body: { confirm: true, ids } });
       for (const id of ids) delete trashed[id];
+      rows.value = rows.value.filter(x => !ids.includes(x.id));
       clearSel(); buzz(30); flash(`已彻底删除 ${ids.length} 款`);
-      await load();
     } catch (e) { flash("彻底删除失败：" + ((e as Error)?.message ?? String(e))); }
   }
   function setSerial(r: Row) { void putSerial(r, r.serial); }
@@ -1623,7 +1638,11 @@
     } catch (e) { flash("设置封面失败：" + ((e as Error)?.message ?? String(e))); }
     galleryBusy.value = false;
   }
-  async function closeGallery() { galleryOpen.value = false; await load(); }
+  async function closeGallery() {
+    const gid = galleryId.value;
+    galleryOpen.value = false;
+    if (gid) await refreshRow(gid);
+  }
 
   async function purgeAll() {
     if (!isOwner.value) { flash("仅管理员可清空回收站"); return; }
@@ -1632,9 +1651,10 @@
     if (!window.confirm(`清空回收站（${n} 款）？此操作不可恢复。`)) return;
     try {
       await $fetch("/api/v1/trash2/purge", { method: "POST", body: { confirm: true } });
+      const gone = new Set(Object.keys(trashed));
       for (const k of Object.keys(trashed)) delete trashed[k];
+      rows.value = rows.value.filter(x => !gone.has(x.id));
       buzz(30); flash(`回收站已清空（${n} 款）`);
-      await load();
     } catch (e) { flash("清空失败：" + ((e as Error)?.message ?? String(e))); }
   }
   function trashAgeDays(r: Row): number | null {
@@ -1966,6 +1986,19 @@
     offline.value = oq.isOffline();
     pendingN.value = oq.pending();
   }
+  // 本页写操作时间戳：WS 回声（自己改的也会广播回来）在窗口期内跳过刷新
+  let lastLocalEdit = 0;
+  function noteLocalEdit() { lastLocalEdit = Date.now(); }
+  // 静默增量刷新：不碰 loading/滚动位置/已加载条数，按 id 合并变更（他人编辑实时可见）
+  async function refreshSilent() {
+    try {
+      const agg = await $fetch<Record<string, any>>("/api/v1/ledger");
+      if (agg && Array.isArray(agg.items)) {
+        applyAgg(agg);
+        try { localStorage.setItem(CACHE_KEY, JSON.stringify(agg)); } catch (_e) { /* ignore */ }
+      }
+    } catch (_e) { /* 静默失败，下次事件再试 */ }
+  }
   function connectWS() {
     try {
       const scheme = location.protocol === "https:" ? "wss:" : "ws:";
@@ -1980,8 +2013,9 @@
         try { d = JSON.parse(String(ev.data)); } catch (_e) { return; }
         const type = String(d?.event || d?.type || "");
         if (type.includes("mutation")) {
+          if (Date.now() - lastLocalEdit < 6000) return; // 自己的编辑：本地已更新，跳过
           window.clearTimeout(wsRefresh);
-          wsRefresh = window.setTimeout(() => { void load(); }, 1500);
+          wsRefresh = window.setTimeout(() => { void refreshSilent(); }, 800);
         }
       };
       ws.onerror = () => { wsOk.value = false; };

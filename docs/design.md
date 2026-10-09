@@ -552,3 +552,10 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **方案**：新增 `backend/phash.go`（GET/PUT `/api/v1/gx/phashes`，按集合存 `/data/biz/phashes-<组ID>.json`，biz JSON 模式，PUT 增量合并+16 位 hex 格式校验，同键以服务端已有为准——同一浏览器算法产物必然一致）。前端：onMounted 先 pull 共享库再 buildPhashIndex（只补算缺的）；本地新增指纹（建索引/AI 新增/并入/换封面）防抖 2.5s 回推。
 - **补丁**：routes-phash 独立块，锚点复用 routes-ledger 注入的 gx/config/restore 行（新树由 6 号块先注入、复用树已有该行，两种路径都适用；独立 marker 避免 rep_any 锚点冻结问题）。
 - **验证**：tests/test_phash_sync.py——全量 117 张建库 → 服务端写入 117 → 全新浏览器上下文（模拟新设备）直接拉到 117/117 零重算。
+
+### 定向刷新：消灭「改一条、刷全表」（18）
+- **问题**：WS mutation 事件（上游只广播组级 GroupMutationEvent，无实体 ID）触发防抖整表 load()——自己改一个数量，1.5s 后全表骨架屏闪烁、无限滚动与滚动位置被重置。
+- **本页回声抑制**：$fetch 包一层，任何非 GET 请求写入 lastLocalEdit 时间戳（覆盖数量/字段/名称/价格/批量/上传等全部写路径，不只数量）；WS 事件落在 6s 窗口内直接跳过——本地保存函数已就地更新行，无需刷新。
+- **静默增量刷新**：窗口外的 mutation（他人/其他设备编辑）改走 refreshSilent()——重拉 /api/v1/ledger 按 id 合并 applyAgg，不碰 loading 骨架屏、shown 已加载条数与滚动位置（keyed v-for 复用 DOM）。
+- **显式 load() 收敛**：新增物品/复制一件/关闭图片抽屉改 refreshRow(id) 单行定向拉取（不存在则 unshift）；彻底删除（单个/批量/清空）改本地 filter 剔除。保留下拉刷新与批量导入的整表 load()（用户主动/大批量场景）。
+- **测试教训**：抑制窗口会误伤「紧随其后」的外部编辑断言——测试须先越过 6s 窗口再模拟外部编辑。tests/test_targeted_refresh.py 8 项全过。
