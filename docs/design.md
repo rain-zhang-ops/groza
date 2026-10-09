@@ -538,3 +538,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 ### 图片加载动画补齐（16 补）
 - 覆盖扩展到：图片抽屉（多图，GxThumb h-28 w-full）、大图预览（居中 spinner，@load 淡入，preview 切换重置 previewLoaded）、入库页拣选（残留 loading=lazy 一并去除）。
 - 说明：已缓存图片瞬时显示不出动画是预期行为；动画只在真实慢加载时出现。验证用请求拦截（abort/延迟）确定性复现。
+
+### AI 拍照滤重：图片指纹 pHash（17）
+- **需求**：AI 新增时通过照片直接判定「这物品已经有了」，起滤重作用；只做第一层（近似重复检测），不做文本/embedding 层。
+- **实现路径选择**：全前端 canvas 计算（`frontend/composables/usePhash.ts`），不建后端哈希接口——浏览器与 Go 分别缩放+哈希会因插值差异产生两套对不上的指纹，单一实现保证一致性；指纹索引存 localStorage `hb.phash.v1`（附件 id → 指纹 + 物品 id 映射），台账加载后后台逐张补齐（40ms 间隔防卡顿，失败单张跳过）。
+- **算法**：32×32 灰度 → DCT → 低频 8×8 与中位数比较 → 64 位指纹（16 hex）。汉明距离 ≤8 强命中、9~14 弱提示。拍照压缩后与 AI 识别 `Promise.all` 并行，不拖慢原流程。
+- **命中交互**（确认框内嵌，不自动裁决）：强命中出琥珀色拦截条（缩略图+「疑似已有物品 · 相似度 N%」+库存），主按钮变「并入库存 +1」（复用 step() 含撤销记录）与「定位查看」（设 filter.q），「仍要新增」降级为次按钮；弱命中灰条提示+定位；队列内互查（距离 ≤6）提示同批重复。
+- **指纹沉淀**：AI 新增成功、并入已有（照片作为该物品额外附件，一物多指纹）、手动换封面，三处都会自动登记指纹。
+- **清理**：aiReject/aiCreateOne/aiAdvance/clearAIDone 同步清理 aiHashes；测试脚本 tests/test_phash_dedup.py（端到端：索引→同款重拍→拦截条→并入→库存+1），副作用清理 tests/cleanup_phash_test.py。

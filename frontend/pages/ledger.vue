@@ -70,7 +70,8 @@
   type Field = "qty" | "purchase" | "sell" | "safety";
   type UndoItem = { row: Row; field: Field; prev: any };
   type AiTask = { id: string; label: string; search: boolean; status: "等待中" | "识别中" | "待确认" | "完成" | "失败" | "已取消"; msg: string };
-  type AiConfirm = { id: string; blob: Blob; name: string; brand: string; size: string; spec: string; color: string; material: string; tag: string; search: boolean; url: string };
+  type AiMatch = { id: string; name: string; qty: number; dist: number };
+  type AiConfirm = { id: string; blob: Blob; name: string; brand: string; size: string; spec: string; color: string; material: string; tag: string; search: boolean; url: string; hash: string; match: AiMatch | null; weak: AiMatch | null; queueDup: boolean };
 
   const route = useRoute();
   const router = useRouter();
@@ -524,6 +525,59 @@
   const AI_SIZES = ["A4", "A5", "A5S", "A6", "A6L", "B5", "B6", "Micro", "Skinny", "Classic", "Mini"];
   const AI_SPECS = ["横线", "网格", "方格", "点阵", "Notes笔记本", "无日期计划本", "有日期计划本"];
   const AI_MATERIALS = ["纸", "塑料", "金属", "布", "PU"];
+  // ---------- 图片指纹滤重（pHash，仅第一层：近似重复检测） ----------
+  const PHASH_STRONG = 8; // 汉明距离 ≤8：强命中，拦截新增
+  const PHASH_WEAK = 14; // 9~14：弱提示
+  const PHASH_KEY = "hb.phash.v1";
+  const aiHashes = new Map<string, string>(); // 任务 id -> 照片指纹
+  const phashStore = reactive<{ h: Record<string, string>; o: Record<string, string> }>({ h: {}, o: {} });
+  try { Object.assign(phashStore, JSON.parse(localStorage.getItem(PHASH_KEY) || "{}")); } catch (_e) { /* ignore */ }
+  function persistPhash() { try { localStorage.setItem(PHASH_KEY, JSON.stringify({ h: phashStore.h, o: phashStore.o })); } catch (_e) { /* ignore */ } }
+  function rowById(id: string): Row | undefined { return rows.value.find(r => r.id === id); }
+  function matchImgUrl(id: string): string { const r = rowById(id); return r && r.thumb ? imgUrl(r) : ""; }
+  function phashSim(dist: number): number { return Math.max(0, Math.round((1 - dist / 64) * 100)); }
+  function findPhashMatch(hash: string): { row: Row; dist: number } | null {
+    if (!hash) return null;
+    let best: { row: Row; dist: number } | null = null;
+    for (const aid of Object.keys(phashStore.h)) {
+      const d = phashHamming(hash, phashStore.h[aid]);
+      if (d > PHASH_WEAK) continue;
+      const row = rowById(phashStore.o[aid] || "");
+      if (!row) continue;
+      if (!best || d < best.dist) best = { row, dist: d };
+    }
+    return best;
+  }
+  function queueDupOf(id: string, hash: string): boolean {
+    if (!hash) return false;
+    for (const [tid, h] of aiHashes) {
+      if (tid === id || !h) continue;
+      const t = aiTasks.value.find(x => x.id === tid);
+      if (!t || t.status !== "待确认") continue;
+      if (phashHamming(hash, h) <= 6) return true;
+    }
+    return false;
+  }
+  let phashBusy = false;
+  async function buildPhashIndex() {
+    if (phashBusy || !import.meta.client) return;
+    phashBusy = true;
+    try {
+      let dirty = false;
+      for (const r of rows.value) {
+        if (!r.thumb || phashStore.h[r.thumb]) continue;
+        try {
+          phashStore.h[r.thumb] = await computePhash(imgUrl(r));
+          phashStore.o[r.thumb] = r.id;
+          dirty = true;
+        } catch (_e) { /* 单张失败跳过 */ }
+        await new Promise(res => setTimeout(res, 40));
+      }
+      if (dirty) persistPhash();
+    } finally {
+      phashBusy = false;
+    }
+  }
   function pickAI() { aiInput.value?.click(); }
   function focusAppSearch() {
     const el = document.querySelector('input[type="search"]') as HTMLInputElement | null;
@@ -561,7 +615,11 @@
         try {
           const f = aiFiles.get(t.id) as File;
           const blob = await compressImage(f);
-          const res = await $fetch<Record<string, string>>(`/api/v1/ai/recognize${t.search ? "?search=1" : ""}`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob });
+          const [res, ph] = await Promise.all([
+            $fetch<Record<string, string>>(`/api/v1/ai/recognize${t.search ? "?search=1" : ""}`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob }),
+            computePhash(blob).catch(() => ""),
+          ]);
+          aiHashes.set(t.id, ph);
           aiBlobs.set(t.id, blob);
           aiFiles.delete(t.id);
           t.status = "待确认"; t.msg = (res.name || "").trim() || "识别完成";
@@ -575,6 +633,8 @@
     }
   }
   function openAIConfirm(t: AiTask, res: Record<string, string>, blob: Blob) {
+    const hash = aiHashes.get(t.id) || "";
+    const m = findPhashMatch(hash);
     aiConfirm.value = {
       id: t.id,
       blob,
@@ -587,6 +647,10 @@
       tag: clampField(res.tag, AI_FIELDS),
       search: t.search,
       url: URL.createObjectURL(blob),
+      hash,
+      match: m && m.dist <= PHASH_STRONG ? { id: m.row.id, name: m.row.name, qty: m.row.qty, dist: m.dist } : null,
+      weak: m && m.dist > PHASH_STRONG ? { id: m.row.id, name: m.row.name, qty: m.row.qty, dist: m.dist } : null,
+      queueDup: queueDupOf(t.id, hash),
     };
   }
   function reopenAIConfirm(t: AiTask) {
@@ -611,6 +675,7 @@
     const t = aiTasks.value.find(x => x.id === c.id);
     if (t) { t.status = "已取消"; t.msg = "已拒绝"; }
     aiBlobs.delete(c.id);
+    aiHashes.delete(c.id);
     URL.revokeObjectURL(c.url);
     aiConfirm.value = null;
     const next = aiTasks.value.find(x => x.status === "待确认");
@@ -628,6 +693,7 @@
       if (t) { t.status = "完成"; t.msg = row.name; }
       rows.value.unshift(row);
       trashed[row.id] = false; delete trashEntries[row.id];
+      if (row.thumb && c.hash) { phashStore.h[row.thumb] = c.hash; phashStore.o[row.thumb] = row.id; persistPhash(); }
       markSaved(row.id);
     } catch (err) {
       const t = aiTasks.value.find(x => x.id === c.id);
@@ -635,6 +701,7 @@
       return;
     }
     aiBlobs.delete(c.id);
+    aiHashes.delete(c.id);
     URL.revokeObjectURL(c.url);
     aiConfirm.value = null;
     const next = aiTasks.value.find(x => x.status === "待确认");
@@ -649,6 +716,54 @@
       await aiCreateOne();
       if (!aiConfirm.value || aiConfirm.value.id === before) break;
     }
+  }
+  function aiAdvance() {
+    const c = aiConfirm.value;
+    if (!c) return;
+    aiBlobs.delete(c.id);
+    aiHashes.delete(c.id);
+    URL.revokeObjectURL(c.url);
+    aiConfirm.value = null;
+    const next = aiTasks.value.find(x => x.status === "待确认");
+    if (next) {
+      const blob = aiBlobs.get(next.id);
+      if (blob) openAIConfirm(next, {}, blob);
+    }
+  }
+  // 指纹命中：并入已有物品（数量+1），同时把这张照片沉淀为该物品的额外指纹
+  async function aiMergeInto() {
+    const c = aiConfirm.value;
+    if (!c || !c.match) return;
+    const row = rowById(c.match.id);
+    if (!row) { flash("该物品已不存在"); return; }
+    await step(row, 1);
+    try {
+      const form = new FormData();
+      form.append("file", c.blob, "ai.jpg");
+      form.append("name", "ai.jpg");
+      form.append("type", "photo");
+      const d = await $fetch<Record<string, any>>(`/api/v1/entities/${row.id}/attachments`, { method: "POST", body: form });
+      const atts = (d.attachments || []) as Array<Record<string, any>>;
+      const att = atts.find(a => a.name === "ai.jpg") || atts[atts.length - 1];
+      if (att?.id && c.hash) { phashStore.h[att.id] = c.hash; phashStore.o[att.id] = row.id; persistPhash(); }
+    } catch (_e) { /* 附件沉淀失败不影响并入 */ }
+    const t = aiTasks.value.find(x => x.id === c.id);
+    if (t) { t.status = "完成"; t.msg = "并入 " + row.name; }
+    buzz(); flash(`已并入：${row.name} → ${row.qty}`);
+    aiAdvance();
+  }
+  // 指纹命中：放弃新增，定位到已有物品
+  function aiLocate() {
+    const c = aiConfirm.value;
+    if (!c) return;
+    const m = c.match || c.weak;
+    if (!m) return;
+    const t = aiTasks.value.find(x => x.id === c.id);
+    if (t) { t.status = "已取消"; t.msg = "已定位"; }
+    const name = m.name;
+    aiAdvance();
+    filter.q = name;
+    flash("已定位：" + name);
   }
   function aiCancelTask(t: AiTask) {
     if (t.status === "等待中") {
@@ -701,7 +816,7 @@
   }
   function clearAIDone() {
     const removed = aiTasks.value.filter(t => t.status === "已取消" || t.status === "完成" || t.status === "失败");
-    for (const t of removed) aiBlobs.delete(t.id);
+    for (const t of removed) { aiBlobs.delete(t.id); aiHashes.delete(t.id); }
     aiTasks.value = aiTasks.value.filter(t => t.status === "等待中" || t.status === "识别中" || t.status === "待确认");
   }
   async function setField(r: Row, name: "品牌" | "尺寸" | "颜色" | "规格" | "材质", val: string) {
@@ -941,6 +1056,7 @@
       }
     };
     await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
+    void buildPhashIndex();
   }
 
   // ---------- 视图状态 / URL / 记忆 ----------
@@ -1122,6 +1238,10 @@
       await $fetch(`/api/v1/entities/${target.id}/attachments`, { method: "POST", body: form });
       const d = await $fetch<Record<string, any>>(`/api/v1/entities/${target.id}`);
       target.thumb = d.imageId || d.thumbnailId || target.thumb;
+      if (target.thumb) {
+        const aid = target.thumb;
+        void computePhash(blob).then(h => { phashStore.h[aid] = h; phashStore.o[aid] = target.id; persistPhash(); }).catch(() => { /* 指纹失败不影响上传 */ });
+      }
       flash("已上传封面");
     } catch (err2) {
       flash("上传失败：" + ((err2 as Error)?.message ?? String(err2)));
@@ -1186,6 +1306,7 @@
     await load();
     await nextTick();
     onScrollLoadMore();
+    void buildPhashIndex();
   });
   onBeforeUnmount(() => {
     window.removeEventListener("hb:offline-queue", syncOq);
@@ -1988,6 +2109,18 @@
             <span class="font-medium">AI 识别结果确认</span>
             <span class="text-xs text-muted-foreground tabular-nums">待确认 {{ aiPending }}<template v-if="aiActive"> · 识别中 {{ aiActive }}</template></span>
           </div>
+          <div v-if="aiConfirm.match" class="mb-3 flex items-center gap-3 rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-2 dark:border-amber-400/30 dark:bg-amber-400/10">
+            <GxThumb v-if="matchImgUrl(aiConfirm.match.id)" :src="matchImgUrl(aiConfirm.match.id)" box-class="h-12 w-12 rounded-lg border" />
+            <div class="min-w-0 flex-1">
+              <div class="text-sm font-medium text-amber-800 dark:text-amber-200">疑似已有物品 · 相似度 {{ phashSim(aiConfirm.match.dist) }}%</div>
+              <div class="truncate text-xs text-muted-foreground">{{ aiConfirm.match.name }} · 库存 {{ aiConfirm.match.qty }}</div>
+            </div>
+          </div>
+          <div v-else-if="aiConfirm.weak" class="mb-3 flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
+            <span class="truncate">有相似物品：{{ aiConfirm.weak.name }}（库存 {{ aiConfirm.weak.qty }} · 相似度 {{ phashSim(aiConfirm.weak.dist) }}%）</span>
+            <button class="ml-auto shrink-0 rounded px-1.5 py-0.5 text-primary transition hover:bg-primary/10" @click="aiLocate">定位</button>
+          </div>
+          <div v-if="aiConfirm.queueDup" class="mb-3 rounded-lg border border-amber-300/70 bg-amber-50 px-3 py-1.5 text-xs text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">这张照片与队列中另一张几乎相同，注意别重复入库</div>
           <div class="flex gap-3">
             <img :src="aiConfirm.url" class="h-28 w-28 shrink-0 rounded-xl border object-cover" alt="识别图片" />
             <div class="grid flex-1 grid-cols-2 gap-2 text-sm">
@@ -2027,8 +2160,15 @@
           <div class="mt-4 flex flex-wrap justify-end gap-2">
             <button :class="[btnGhost, 'active:scale-95']" @click="aiConfirmNext">跳过 ›</button>
             <button class="inline-flex items-center gap-1 rounded-lg border border-destructive/40 px-3 py-1.5 text-sm font-medium text-destructive transition hover:bg-destructive/10 active:scale-95" @click="aiReject"><MdiClose class="h-4 w-4" /> 拒绝</button>
-            <button v-if="aiPending > 1" :class="[btnGhost, 'active:scale-95']" @click="aiCreateAll">全部入库</button>
-            <button :class="[btnPrimary, 'active:scale-95']" @click="aiCreateOne"><MdiPlus class="h-4 w-4" /> 确认入库</button>
+            <template v-if="aiConfirm.match">
+              <button :class="[btnGhost, 'active:scale-95']" @click="aiLocate"><MdiMagnify class="h-4 w-4" /> 定位查看</button>
+              <button :class="[btnGhost, 'active:scale-95']" @click="aiCreateOne">仍要新增</button>
+              <button :class="[btnPrimary, 'active:scale-95']" @click="aiMergeInto"><MdiPlus class="h-4 w-4" /> 并入库存 +1</button>
+            </template>
+            <template v-else>
+              <button v-if="aiPending > 1" :class="[btnGhost, 'active:scale-95']" @click="aiCreateAll">全部入库</button>
+              <button :class="[btnPrimary, 'active:scale-95']" @click="aiCreateOne"><MdiPlus class="h-4 w-4" /> 确认入库</button>
+            </template>
           </div>
         </div>
       </div>
