@@ -72,10 +72,14 @@
       loading.value = false;
     }
   }
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const qInput = ref<HTMLInputElement | null>(null);
   onMounted(() => {
     load();
     syncOq();
     window.addEventListener("hb:offline-queue", syncOq);
+    // 高频录入：桌面端落地即聚焦搜索框（移动端不弹键盘，避免打扰）
+    if (!isMobile.value) nextTick(() => qInput.value?.focus());
   });
   onBeforeUnmount(() => {
     window.removeEventListener("hb:offline-queue", syncOq);
@@ -217,7 +221,7 @@
           <input v-model="note" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="备注（档口/日期/特殊约定…）" />
         </div>
         <div class="mt-2 flex items-center gap-2">
-          <input v-model="q" :class="[inputCls, 'h-11 min-w-0 flex-1 text-base']" placeholder="搜索商品加入入库单" />
+          <input ref="qInput" v-model="q" :class="[inputCls, 'h-11 min-w-0 flex-1 text-base']" placeholder="搜索商品加入入库单" />
         </div>
         <div v-if="loading" class="mt-2 space-y-2">
           <div v-for="i in 5" :key="i" :class="skeletonCls"></div>

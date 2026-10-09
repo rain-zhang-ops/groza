@@ -127,6 +127,21 @@ const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-
 **Do**：用 token 色值；`tabular-nums` 管数字；hover 只改底色；新页从 §3 模板复制。
 **Don't**：不用 `shadow` 于静态卡片；不用 `red-*`/`blue-*` 裸色；衬线不加粗；不新增居中表单弹窗；不在页头放超过 5 个按钮。
 
+## 11. 交互标准（Interaction）
+
+> 来源：Nielsen 响应三阈值、Linear（乐观更新/安静表格）、Notion（hover 渐进披露）、Apple HIG（44pt 触控）、Material（Snackbar 规范）、A List Apart（undo 优于警告）。
+
+1. **即时反馈**：任何点击 100ms 内有视觉反馈（`active:scale-95`/局部 loading）；>1s 的操作必须出状态文案。
+2. **乐观更新**：可逆操作先写本地、后台同步、失败回滚+提示；界面速度不依赖网络。
+3. **撤销优于确认**：删除/作废 = 立即执行 + 撤销入口；仅不可恢复操作允许确认弹窗。
+4. **安静表格**（台账桌面）：单元格控件默认透明无边（`cellCtrl`），hover 显边、focus 显环；行操作按钮与复选框 `opacity-0 group-hover:opacity-100`（有选中态时复选框常显）；读时像文档，写时是表单。
+5. **Esc 逐层关闭**：所有抽屉/弹层/预览必须可被 Esc 关闭（`useEscStack`，弹层栈顶优先）；点击遮罩（`@click.self`）关闭同样必须。
+6. **菜单外点收起**：`<details>` 菜单点击页面任意处自动关闭（`useDetailsAutoClose`，capture 阶段）。
+7. **键盘流**：高频录入页桌面端落地聚焦首字段（移动端不弹键盘）；Enter 前进/提交。
+8. **触控下限**：可点目标 ≥44px；主操作在拇指热区（屏幕下半部）。
+9. **加载态**：已知布局用骨架屏；不用裸 spinner。
+10. **空态**：每页必有设计过的空态（说明 + 引导动作）。
+
 ## 附：现状差距清单（按优先级）
 
 | # | 差距 | 涉及文件 | 标准条款 |

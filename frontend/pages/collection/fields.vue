@@ -146,6 +146,8 @@
     finally { saving.value = false; }
   }
 
+  // Esc 关闭确认框
+  useEscStack([() => !!confirmDlg.value && ((confirmDlg.value = null), true)]);
   onMounted(() => { void loadMe(); void loadHistory(); void load(); });
 </script>
 

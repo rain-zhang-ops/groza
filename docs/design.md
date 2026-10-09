@@ -605,3 +605,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **台账工具条（丑陋重灾区）**：桌面 11+ 按钮在 flex-nowrap 下被压缩竖排换行（补货提/醒、导出 CS/V）——根因是按钮无 `whitespace-nowrap` 且数量超设计标准 §10「页头 ≤5 按钮」。收敛：桌面可见 = 扫码/刷新/撤销(瞬时)/联网开关/同步状态点 + 更多⋯ + AI 新增 + 新增物品；低频动作（补货提醒/安装/数据体检/批量导入/导出CSV/复制清单/导出长图/大字号/清空回收站）全部收进「更多」菜单，菜单从 `md:hidden` 改为移动/桌面统一。btnGhost/btnPrimary 共享常量补 `whitespace-nowrap shrink-0`。
 - **实现**：登录页字标/社交图标为补丁块（login-wordmark-groza / login-social-rm 段替换）；标题清扫为 glob 巡检替换（`HomeBox |` → `Groza |`，幂等）；LanguageSelector/侧栏 sr 文案为 rep 块。
 - **验证**：登录页 Groza 字标+无社交图标+语言下拉不重复；台账工具条无竖排按钮、更多菜单含全部低频动作；6 页控件英文残留扫描零命中（允许 Groza/AI/CSV 等专有名词）。
+
+### 交互统一改造：安静表格 + Esc/外点 + 键盘流（24）
+- **调研**（子代理，8 个一手来源）：Nielsen 响应三阈值（0.1s 直接操纵感上限）、Linear（乐观更新是架构、动画只动 transform/opacity）、Notion（hover 渐进披露 checkbox/拖柄）、Apple HIG（44pt 触控下限）、Material（Snackbar 4-6s 至多一个动作）、A List Apart（Never use a warning when you mean undo；失焦校验优于边输边报）。产出 20 条统一交互标准，精选 10 条落地为 ui-standard.md §11。
+- **台账桌面「安静表格」**（本轮最大痛点：每格都是带框控件、每行 6 个图标按钮常显）：单元格控件统一 `cellCtrl/cellInput/cellSelect` 常量——默认透明无边（读时如文档），hover 显边、focus 显环；行操作 6 按钮与复选框 `opacity-0 group-hover:opacity-100 focus-within:opacity-100`（有选中态时复选框常显）；数量步进保持常显（主操作不藏）；功能零删减。
+- **全局弹层卫生**：新增 `frontend/composables/useEscStack.ts`（Nuxt 自动导入）——useEscStack（Esc 按栈顶优先逐层关闭：图片预览→扫码→AI 确认→筛选/新增/体检/导入/历史/图库/字段/二维码/批量预览抽屉）+ useDetailsAutoClose（`<details>` 菜单外点收起，原生无此行为）。接线：ledger（12 层）、outbound（扫码）、fields（确认框）；ship 既有手写 Esc 保持。
+- **表单键盘流**：入库页桌面落地自动聚焦搜索框（`qInput.focus()`，移动端不弹键盘避免打扰）。
+- **注意**：与 rebuild 链路一致——新 composable 三处登记（rebuild.sh cp + CUSTOM_FILES + check.sh）。
+- **验证**：静默表格默认态/hover 态截图对比；Esc 关二维码抽屉 ✓；更多菜单外点收起 ✓；入库自动聚焦 ✓；复选框选中态常显 ✓。

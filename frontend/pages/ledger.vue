@@ -1826,6 +1826,28 @@
   }
   function imgUrl(r: Row): string { return r.thumb ? `/api/v1/entities/${r.id}/attachments/${r.thumb}` : ""; }
   const arrow = (k: string) => (sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : "");
+  // ---------- 桌面表格静默单元格（读时纯文本，hover 显边，focus 显环；Linear/Notion 式安静表格） ----------
+  const cellCtrl = "rounded-md border border-transparent bg-transparent text-sm outline-none transition-colors hover:border-input hover:bg-background focus:border-input focus:bg-background focus:ring-2 focus:ring-ring/40";
+  const cellInput = cellCtrl + " px-2 py-1";
+  const cellSelect = cellCtrl + " px-1 py-1";
+
+  // ---------- 全局交互：Esc 逐层关弹层；details 菜单外点收起 ----------
+  useDetailsAutoClose();
+  useEscStack([
+    () => !!preview.value && ((preview.value = null), true),
+    () => scanOpen.value && (closeScan(), true),
+    () => !!aiConfirm.value && ((aiConfirm.value = null), true),
+    () => filterOpen.value && ((filterOpen.value = false), true),
+    () => addOpen.value && ((addOpen.value = false), true),
+    () => qualityOpen.value && ((qualityOpen.value = false), true),
+    () => importOpen.value && ((importOpen.value = false), true),
+    () => historyOpen.value && ((historyOpen.value = false), true),
+    () => galleryOpen.value && (void closeGallery(), true),
+    () => fieldsOpen.value && ((fieldsOpen.value = false), true),
+    () => qrOpen.value && ((qrOpen.value = false), true),
+    () => !!batchPreview.value && (cancelBatch(), true),
+  ]);
+
   function rowClass(r: Row): string {
     if (isTrashed(r)) return "bg-destructive/10";
     if (isLow(r)) return "bg-amber-500/10";
@@ -2477,19 +2499,19 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in paged" :key="r.id" class="border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
-              <td v-if="!countMode" :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
+            <tr v-for="r in paged" :key="r.id" class="group border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
+              <td v-if="!countMode" :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary transition-opacity" :class="selectedCount || sel[r.id] ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
                   <GxThumb v-if="r.thumb" :src="imgUrl(r)" box-class="h-9 w-9 cursor-zoom-in rounded-md border transition hover:scale-110" @click="preview = imgUrl(r)" />
-                  <button v-else-if="!countMode" class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
+                  <button v-else-if="!countMode" class="grid h-9 w-9 place-items-center rounded-md border border-dashed text-muted-foreground/60 transition hover:border-input hover:bg-muted hover:text-muted-foreground" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
                   <button v-if="r.thumb && !countMode" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
                 </div>
               </td>
               <td :class="cellPad">
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <input v-model="r.name" class="w-40 min-w-0 flex-1 rounded-md border bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="setName(r)" />
-                  <NuxtLink :to="`/item/${r.id}`" class="text-primary hover:underline" title="打开详情"><MdiOpenInNew class="h-3.5 w-3.5" /></NuxtLink>
+                  <input v-model="r.name" class="w-40 min-w-0 flex-1" :class="cellInput" :disabled="countMode" @change="setName(r)" />
+                  <NuxtLink :to="`/item/${r.id}`" class="text-primary opacity-0 transition-opacity hover:underline group-hover:opacity-100" title="打开详情"><MdiOpenInNew class="h-3.5 w-3.5" /></NuxtLink>
                   <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
                   <span v-if="isLow(r)" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
                   <span v-else-if="isSoldOut(r)" class="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">售罄</span>
@@ -2497,25 +2519,25 @@
               </td>
               <td v-if="cols.updated" :class="[cellPad, 'whitespace-nowrap text-muted-foreground']" :title="r.updated">{{ fmtDate(r.updated) }}</td>
               <td v-if="cols.shelf" :class="cellPad">
-                <input v-model="r.serial" class="w-20 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="-" :disabled="countMode" @change="setSerial(r)" />
+                <input v-model="r.serial" class="w-20" :class="cellInput" placeholder="-" :disabled="countMode" @change="setSerial(r)" />
               </td>
-              <td :class="cellPad"><select :value="r.brand" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '品牌', 'brand')"><option value="">-</option><option v-for="v in optsWith(brandOptions, r.brand)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.size" :class="cellPad"><select :value="r.size" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '尺寸', 'size')"><option value="">-</option><option v-for="v in optsWith(sizeOptions, r.size)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.spec" :class="cellPad"><select :value="r.spec" class="w-24 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '规格', 'spec')"><option value="">-</option><option v-for="v in optsWith(specOptions, r.spec)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.color" :class="cellPad"><select :value="r.color" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '颜色', 'color')"><option value="">-</option><option v-for="v in optsWith(colorOptions, r.color)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.material" :class="cellPad"><select :value="r.material" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '材质', 'material')"><option value="">-</option><option v-for="v in optsWith(materialOptions, r.material)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td :class="cellPad"><select :value="r.brand" class="w-20" :class="cellSelect" :disabled="countMode" @change="onInline($event, r, '品牌', 'brand')"><option value="">-</option><option v-for="v in optsWith(brandOptions, r.brand)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.size" :class="cellPad"><select :value="r.size" class="w-20" :class="cellSelect" :disabled="countMode" @change="onInline($event, r, '尺寸', 'size')"><option value="">-</option><option v-for="v in optsWith(sizeOptions, r.size)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.spec" :class="cellPad"><select :value="r.spec" class="w-24" :class="cellSelect" :disabled="countMode" @change="onInline($event, r, '规格', 'spec')"><option value="">-</option><option v-for="v in optsWith(specOptions, r.spec)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.color" :class="cellPad"><select :value="r.color" class="w-20" :class="cellSelect" :disabled="countMode" @change="onInline($event, r, '颜色', 'color')"><option value="">-</option><option v-for="v in optsWith(colorOptions, r.color)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.material" :class="cellPad"><select :value="r.material" class="w-20" :class="cellSelect" :disabled="countMode" @change="onInline($event, r, '材质', 'material')"><option value="">-</option><option v-for="v in optsWith(materialOptions, r.material)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
               <template v-for="f in extraFields" :key="'c' + f.name">
                 <td v-if="cols[f.name]" :class="cellPad">
-                  <input v-if="f.type === 'text'" v-model="r.extra[f.name]" class="w-24 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
-                  <input v-else-if="f.type === 'number'" v-model.number="r.extra[f.name]" type="number" inputmode="decimal" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
+                  <input v-if="f.type === 'text'" v-model="r.extra[f.name]" class="w-24" :class="cellInput" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
+                  <input v-else-if="f.type === 'number'" v-model.number="r.extra[f.name]" type="number" inputmode="decimal" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
                   <input v-else-if="f.type === 'boolean'" v-model="r.extra[f.name]" type="checkbox" class="accent-primary" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
                 </td>
               </template>
               <td v-if="cols.purchase" :class="cellPad">
-                <input v-model.number="r.purchase" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
+                <input v-model.number="r.purchase" inputmode="decimal" type="number" step="0.01" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
               </td>
               <td v-if="cols.sell" :class="cellPad">
-                <input v-model.number="r.sell" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'sell')" />
+                <input v-model.number="r.sell" inputmode="decimal" type="number" step="0.01" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'sell')" />
               </td>
               <td :class="cellPad">
                 <div class="flex items-center justify-center gap-1">
@@ -2525,19 +2547,19 @@
                 </div>
               </td>
               <td v-if="cols.safety" :class="cellPad">
-                <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="w-16 rounded-md border bg-background px-2 py-1 text-center tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @focus="snapshot(r)" @change="setSafety(r)" />
+                <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="w-16 text-center tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setSafety(r)" />
               </td>
               <td v-if="!countMode" :class="[cellPad, 'text-center']">
-                <div class="flex items-center justify-center gap-1">
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="二维码标签" @click="showQR(r)"><MdiQrcode class="h-4 w-4" /></button>
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="复制一件" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" /></button>
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="变更历史" @click="showHistory(r)"><MdiHistory class="h-4 w-4" /></button>
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="图片（多图）" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" /></button>
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="自定义字段" @click="openFields(r)"><MdiFormTextbox class="h-4 w-4" /></button>
-                  <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" :class="isTrashed(r) ? '' : 'border-destructive/40 text-destructive'" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
+                <div class="flex items-center justify-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <button class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-muted active:scale-90" title="二维码标签" @click="showQR(r)"><MdiQrcode class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="复制一件" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-muted active:scale-90" title="变更历史" @click="showHistory(r)"><MdiHistory class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-muted active:scale-90" title="图片（多图）" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-muted active:scale-90" title="自定义字段" @click="openFields(r)"><MdiFormTextbox class="h-4 w-4" /></button>
+                  <button class="grid h-7 w-7 place-items-center rounded-md transition hover:bg-muted active:scale-90 disabled:opacity-40" :class="isTrashed(r) ? '' : 'text-destructive hover:bg-destructive/10'" :disabled="saving[r.id]" :title="isTrashed(r) ? '恢复（取消删除标记）' : '标记删除（不真正删除）'" @click="toggleTrash(r)">
                     <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />
                   </button>
-                  <button v-if="isTrashed(r) && isOwner" class="grid h-7 w-7 place-items-center rounded-md border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="彻底删除（不可恢复）" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" /></button>
+                  <button v-if="isTrashed(r) && isOwner" class="grid h-7 w-7 place-items-center rounded-md text-destructive transition hover:bg-destructive/10 active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="彻底删除（不可恢复）" @click="purgeOne(r)"><MdiDeleteForever class="h-4 w-4" /></button>
                 </div>
               </td>
             </tr>

@@ -33,6 +33,8 @@
   };
 
   const isMobile = useMediaQuery("(max-width: 768px)");
+  // Esc 关闭扫码层
+  useEscStack([() => scanOpen.value && (closeScan(), true)]);
 
   const rows = ref<Row[]>([]);
   const outbounds = ref<Outbound[]>([]);
