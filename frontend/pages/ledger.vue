@@ -967,7 +967,7 @@
     }, 200);
   }
   watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter], syncView, { deep: true });
-  watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter, pageSize], () => { page.value = 1; }, { deep: true });
+  watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter, pageSize], () => { page.value = 1; shown.value = MOBILE_BATCH; }, { deep: true });
   // 侧栏「物品 / 盘点」是同页跳转（/ledger ↔ /ledger?count=1），组件不重挂载，需监听 query 同步盘点模式
   watch(() => route.query.count, (v) => { const want = v === "1"; if (want !== countMode.value) countMode.value = want; });
   watch(cols, () => localStorage.setItem("hb.ledger.cols", JSON.stringify(cols)), { deep: true });
@@ -1156,6 +1156,7 @@
     detectInstall();
     syncOq();
     window.addEventListener("hb:offline-queue", syncOq);
+    window.addEventListener("scroll", onScrollLoadMore, { passive: true });
     connectWS();
     window.addEventListener("pagehide", onWSPageHide);
     window.addEventListener("pageshow", onWSPageShow);
@@ -1174,9 +1175,12 @@
     // 盘点模式只认当前 URL（兼容历史 localStorage 里残留的 count=1）
     countMode.value = route.query.count === "1";
     await load();
+    await nextTick();
+    onScrollLoadMore();
   });
   onBeforeUnmount(() => {
     window.removeEventListener("hb:offline-queue", syncOq);
+    window.removeEventListener("scroll", onScrollLoadMore);
     window.removeEventListener("pagehide", onWSPageHide);
     window.removeEventListener("pageshow", onWSPageShow);
     document.removeEventListener("visibilitychange", onWSVisChange);
@@ -1636,6 +1640,16 @@
     const start = (page.value - 1) * pageSize.value;
     return sorted.value.slice(start, start + pageSize.value);
   });
+  // 移动端无限滚动：首批 30 条，哨兵接近视口即追加（scroll 监听，IO 对快速跳转不可靠）
+  const MOBILE_BATCH = 30;
+  const shown = ref(MOBILE_BATCH);
+  const shownList = computed(() => sorted.value.slice(0, shown.value));
+  const loadMoreEl = ref<HTMLElement | null>(null);
+  function onScrollLoadMore() {
+    const el = loadMoreEl.value;
+    if (!el || shown.value >= sorted.value.length) return;
+    if (el.getBoundingClientRect().top < window.innerHeight + 400) shown.value += MOBILE_BATCH;
+  }
   function gotoPage(p: number) {
     page.value = Math.min(Math.max(1, p), totalPages.value);
     if (import.meta.client) window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2275,7 +2289,7 @@
 
       <!-- 手机卡片 -->
       <TransitionGroup v-else-if="isMobile" name="card" tag="div" class="space-y-2.5">
-        <div v-for="r in paged" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card">
+        <div v-for="r in shownList" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card">
           <div v-show="(swipe[r.id] || 0) < 0" class="absolute inset-y-0 right-0 flex items-center gap-2 bg-primary/5 px-2.5">
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,-1); closeSwipe(r)"><MdiMinus class="h-5 w-5" /></button>
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,1); closeSwipe(r)"><MdiPlus class="h-5 w-5" /></button>
@@ -2352,6 +2366,11 @@
         </div>
       </TransitionGroup>
 
+      <!-- 移动端：无限滚动哨兵 / 到底提示 -->
+      <div v-if="isMobile && sorted.length" class="py-3 text-center text-xs tabular-nums text-muted-foreground">
+        <span v-if="shownList.length < sorted.length" ref="loadMoreEl">下拉加载更多（{{ shownList.length }}/{{ sorted.length }}）</span>
+        <span v-else>共 {{ sorted.length }} 条 · 到底了</span>
+      </div>
       <!-- 盘点：移动端底部固定提交条 -->
       <div v-if="countMode && isMobile" class="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md">
         <div class="flex items-center gap-2">
@@ -2464,8 +2483,8 @@
         </div>
       </div>
 
-      <!-- 分页 -->
-      <div v-if="sorted.length" class="mt-4 flex flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm">
+      <!-- 分页（桌面；移动端用无限滚动） -->
+      <div v-if="sorted.length" class="mt-4 hidden flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm md:flex">
         <select v-model.number="pageSize" class="hidden rounded-lg border bg-background px-2 py-1.5 text-sm md:block" @change="gotoPage(1)">
           <option :value="20">20/页</option>
           <option :value="50">50/页</option>

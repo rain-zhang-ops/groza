@@ -512,3 +512,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **问题**：盘点与物品同页差异太隐晦（仅横幅+输入框），且盘点开关被视图持久化（localStorage count=1）污染——点菜单「物品」也停在盘点模式，两入口体感完全一样。
 - **URL 是盘点唯一来源**：syncView/savePreset 落 localStorage 时剥离 count；onMounted 强制 `countMode = route.query.count === "1"`（兼容历史残留）；页内开关仍可用（经 syncView 写回 URL）。
 - **沉浸式盘点界面**：h1/title 动态「盘点 ↔ 物品台账」（countMode 声明上移到 useHead 前，避开 TDZ）；页头 amber 进度徽章「已盘 N/M」；卡片精简——隐藏价格行/操作行/左滑手势/长按多选（进入盘点自动清空选择）；实盘输入放大 h-12 w-24 text-xl；差异徽章化（盘盈墨色/盘亏红/持平灰）；移动端底部固定提交条（已盘 N/M · 差异 X + 提交盘点，避开 Dock），桌面保留横幅按钮（无差异时禁用）。
+
+### 台账移动端无限滚动（13）
+- **问题**：列表长（120+ 条）时翻页按钮沉在 50 张卡片底下，移动端「显示不下、翻页困难」。
+- **方案**：移动端改无限滚动——首批 30 条，滚动接近底部哨兵（innerHeight+400px 提前量）自动追加 30 条，到底显示「共 N 条 · 到底了」；筛选/排序/视图切换重置回首批。桌面保留翻页条（移动端隐藏）。
+- **实现教训**：IntersectionObserver 对「瞬移式滚动越过哨元」（下方不可见→上方不可见，交集状态不变）不会回调，快速甩动/跳转会卡死加载——改用 passive scroll 监听 + getBoundingClientRect 判定，简单可靠。
