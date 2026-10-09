@@ -1911,8 +1911,8 @@
             <span class="h-1.5 w-1.5 rounded-full animate-pulse" :class="onlyLow ? 'bg-white' : 'bg-amber-500'"></span>待补货 {{ totals.low }}
           </button>
           <button v-if="soldCount" class="inline-flex items-center gap-1 transition active:scale-95 disabled:opacity-50" :class="hideSoldOut ? [badgeCls, 'py-1'] : 'rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary'" :disabled="dataFilter === 'soldout'" :title="dataFilter === 'soldout' ? '当前正在查看售罄物品' : ''" @click="hideSoldOut = !hideSoldOut"><MdiEyeOffOutline v-if="hideSoldOut" class="h-3.5 w-3.5" /><MdiEyeOutline v-else class="h-3.5 w-3.5" />售罄 {{ soldCount }}</button>
-          <div class="ml-auto flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap">
-            <!-- 桌面完整操作 -->
+          <div v-if="!countMode" class="ml-auto flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap">
+            <!-- 桌面完整操作（盘点模式整组隐藏，盘点只改数量） -->
             <div class="hidden items-center gap-2 md:flex">
               <button v-if="!isMobile" :class="[btnGhost, 'active:scale-95']" @click="openScan"><MdiBarcodeScan class="h-4 w-4" /> 扫码</button>
               <button v-if="canInstall" :class="[btnGhost, 'active:scale-95']" @click="install"><MdiCellphoneArrowDown class="h-4 w-4" /> 安装</button>
