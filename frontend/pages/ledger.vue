@@ -62,7 +62,6 @@
     serial: string;
     extra: Record<string, any>;
     thumb: string | null;
-    count: number | null;
     updated: string;
   };
   type Field = "qty" | "purchase" | "sell" | "safety";
@@ -774,7 +773,7 @@
       thumb: e.thumb || e.imageId || e.thumbnailId || null,
       serial: String(e.serial ?? e.serialNumber ?? ""),
       extra: rowExtra(e),
-      count: null, updated: e.updatedAt || "",
+      updated: e.updatedAt || "",
     } as Row;
   }
   function seriesKey(r: Row): string {
@@ -918,7 +917,7 @@
       raw: e, id: e.id, name: e.name,
       brand: "", size: "", spec: "", color: "", material: "", paper: "",
       purchase: null, sell: null, pages: null, safety: null,
-      qty: e.quantity ?? 0, loc: parent?.name || "", serial: String(e.serial ?? e.serialNumber ?? ""), extra: {}, thumb: null, count: null, updated: e.updatedAt || "",
+      qty: e.quantity ?? 0, loc: parent?.name || "", serial: String(e.serial ?? e.serialNumber ?? ""), extra: {}, thumb: null, updated: e.updatedAt || "",
     } as Row;
   }
   async function hydrateRows(ids: string[], concurrency = 8) {
@@ -929,7 +928,7 @@
         try {
           const d = await $fetch<Record<string, any>>(`/api/v1/entities/${id}`);
           const idx = rows.value.findIndex(r => r.id === id);
-          if (idx >= 0) rows.value[idx] = { ...toRow(d), count: rows.value[idx].count };
+          if (idx >= 0) rows.value[idx] = toRow(d);
         } catch (_e) { /* 单条失败忽略 */ }
       }
     };
@@ -1704,42 +1703,8 @@
   });
 
   // ---------- 盘点 ----------
-  const countChanges = computed(() => rows.value.filter(r => r.count !== null && r.count !== r.qty));
-  const countedN = computed(() => rows.value.filter(r => r.count !== null).length);
+  // 盘点 = 极简对账视图：只保留数量修改（即改即存），隐藏多选/操作列/其余编辑器
   watch(countMode, v => { if (v) { for (const k of Object.keys(sel)) delete sel[k]; } });
-  const countReport = ref<{ open: boolean; busy: boolean; rows: Array<{ name: string; expected: number; counted: number; diff: number }> }>({ open: false, busy: false, rows: [] });
-  function submitCount() {
-    const changes = countChanges.value;
-    if (!changes.length) { flash("没有盘点差异"); return; }
-    countReport.value = {
-      open: true, busy: false,
-      rows: changes.map(r => ({ name: r.name, expected: Number(r.qty), counted: Number(r.count), diff: Number(r.count) - Number(r.qty) })),
-    };
-  }
-  async function confirmCount() {
-    const rep = countReport.value;
-    if (!rep.open) return;
-    const changes = countChanges.value;
-    rep.busy = true;
-    try {
-      const lines = changes.map(r => ({ itemId: r.id, counted: Number(r.count) }));
-      const res = await $fetch<Record<string, any>>("/api/v1/gx/adjust", { method: "POST", body: { note: `盘点 ${new Date().toISOString().slice(0, 10)}`, lines } });
-      for (const r of changes) { r.qty = Number(r.count); r.count = null; }
-      buzz(25);
-      flash(`盘点已提交：盘盈 ${res.gain ?? 0} · 盘亏 ${res.loss ?? 0}（单号 ${res.code ?? ""}）`);
-      countReport.value = { open: false, busy: false, rows: [] };
-      await load();
-    } catch (e) { flash("盘点提交失败：" + ((e as Error)?.message ?? String(e))); rep.busy = false; }
-  }
-  function diff(r: Row): number | null { return r.count === null ? null : Number(r.count) - r.qty; }
-  function diffText(r: Row): string { const d = diff(r); return d === null ? "" : (d > 0 ? "+" : "") + d; }
-  function diffClass(r: Row): string { const d = diff(r); return d === null || d === 0 ? "" : d > 0 ? "text-foreground" : "text-destructive"; }
-  function diffBadge(r: Row): string {
-    const d = diff(r);
-    if (d === null) return "text-muted-foreground";
-    if (d === 0) return "bg-muted text-muted-foreground";
-    return d > 0 ? "bg-primary/10 text-foreground" : "bg-destructive/10 text-destructive";
-  }
 
   function setSort(k: string) {
     if (sort.key === k) sort.dir = sort.dir === 1 ? -1 : 1;
@@ -1938,8 +1903,7 @@
       <header class="mb-6">
         <div class="flex flex-wrap items-center gap-2">
           <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">{{ countMode ? "盘点" : "物品台账" }}</h1>
-          <span v-if="countMode" class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">已盘 {{ countedN }} / {{ filtered.length }}</span>
-          <span v-else :class="badgeCls">{{ filtered.length }} 款</span>
+          <span :class="badgeCls">{{ filtered.length }} 款</span>
           <span :class="badgeCls">共 {{ Math.round(anim.qty) }} 件</span>
           <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
             <span class="h-1.5 w-1.5 rounded-full animate-pulse" :class="onlyLow ? 'bg-white' : 'bg-amber-500'"></span>待补货 {{ totals.low }}
@@ -2245,39 +2209,10 @@
           </div>
         </div>
       </Transition>
-      <!-- 盘点差异报告 -->
-      <Transition name="sheet">
-        <div v-if="countReport.open" class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4" @click.self="countReport.open = false">
-          <div class="sheet-panel max-h-[80vh] w-full overflow-auto rounded-t-2xl border bg-card p-4 shadow-xl sm:max-w-lg sm:rounded-2xl">
-            <div class="mb-2 flex items-center gap-2">
-              <span class="font-semibold">盘点差异报告</span>
-              <span class="text-xs text-muted-foreground">共 {{ countReport.rows.length }} 条</span>
-              <button class="ml-auto rounded-lg p-1 text-muted-foreground hover:bg-muted" @click="countReport.open = false"><MdiClose class="h-5 w-5" /></button>
-            </div>
-            <p class="mb-2 text-xs text-muted-foreground">确认后将生成盘盈/盘亏调整单并更新库存。</p>
-            <div class="divide-y rounded-lg border text-sm">
-              <div class="flex items-center gap-2 bg-muted/40 p-2 text-xs text-muted-foreground">
-                <span class="min-w-0 flex-1">名称</span><span class="w-14 text-right">账面</span><span class="w-14 text-right">实盘</span><span class="w-14 text-right">差异</span>
-              </div>
-              <div v-for="(d, i) in countReport.rows" :key="i" class="flex items-center gap-2 p-2">
-                <span class="min-w-0 flex-1 truncate">{{ d.name }}</span>
-                <span class="w-14 text-right tabular-nums text-muted-foreground">{{ d.expected }}</span>
-                <span class="w-14 text-right tabular-nums">{{ d.counted }}</span>
-                <span class="w-14 text-right font-medium tabular-nums" :class="d.diff > 0 ? 'text-foreground' : 'text-destructive'">{{ d.diff > 0 ? "+" : "" }}{{ d.diff }}</span>
-              </div>
-            </div>
-            <div class="mt-4 flex items-center justify-end gap-2">
-              <button :class="[btnGhost, 'active:scale-95']" :disabled="countReport.busy" @click="countReport.open = false">取消</button>
-              <button :class="[btnPrimary, 'active:scale-95']" :disabled="countReport.busy" @click="confirmCount">{{ countReport.busy ? "提交中…" : "确认并生成调整单" }}</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
       <Transition name="fold">
         <div v-if="countMode" class="mb-4 flex items-center gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
           <MdiAlertOutline class="h-5 w-5 shrink-0 text-amber-600" />
-          <span class="min-w-0 flex-1">盘点模式：逐件填写「实盘」，差异自动算出，提交后生成盘点调整单。</span>
-          <button :class="[btnPrimary, 'hidden active:scale-95 md:inline-flex']" :disabled="!countChanges.length" @click="submitCount">提交盘点（{{ countChanges.length }}）</button>
+          <span class="min-w-0 flex-1">盘点模式：只保留数量修改，即改即存；其余编辑已锁定。</span>
         </div>
       </Transition>
 
@@ -2315,7 +2250,7 @@
                   <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">售罄</span>
                 </div>
                 <div class="mt-1.5 text-xs text-muted-foreground">
-                  <button class="rounded-md bg-muted px-2 py-1 text-muted-foreground transition active:scale-95" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
+                  <button class="rounded-md bg-muted px-2 py-1 text-muted-foreground transition active:scale-95 disabled:opacity-60" :disabled="countMode" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
                 </div>
                 <div v-if="attrLine(r)" class="mt-1 truncate text-xs text-muted-foreground">{{ attrLine(r) }}</div>
                 <div v-if="!countMode && ((r.purchase ?? 0) > 0 || (r.sell ?? 0) > 0)" class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
@@ -2325,18 +2260,12 @@
               </div>
             </div>
             <div class="mt-3 flex items-center gap-2">
-              <template v-if="countMode">
-                <span class="shrink-0 text-xs text-muted-foreground">实盘</span>
-                <input v-model.number="r.count" inputmode="numeric" type="number" min="0" :placeholder="String(r.qty)" class="h-12 w-24 shrink-0 rounded-xl border bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-ring/40" />
-                <span class="shrink-0 text-xs text-muted-foreground">账面 {{ r.qty }}</span>
-                <span class="ml-auto shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums" :class="diffBadge(r)">{{ diffText(r) || "—" }}</span>
-              </template>
-              <template v-else>
-                <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
-                  <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
-                  <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
-                  <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
-                </div>
+              <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
+                <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
+                <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+                <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
+              </div>
+              <template v-if="!countMode">
                 <button v-if="!safetyEditing[r.id]" class="ml-auto px-2 py-2 text-xs text-muted-foreground transition active:scale-95" @click="editSafety(r)">安全 {{ r.safety ?? "＋" }}</button>
                 <input v-else v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="ml-auto h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :ref="focusEl" @blur="doneSafetyEdit(r)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
               </template>
@@ -2371,20 +2300,13 @@
         <span v-if="shownList.length < sorted.length" ref="loadMoreEl">下拉加载更多（{{ shownList.length }}/{{ sorted.length }}）</span>
         <span v-else>共 {{ sorted.length }} 条 · 到底了</span>
       </div>
-      <!-- 盘点：移动端底部固定提交条 -->
-      <div v-if="countMode && isMobile" class="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md">
-        <div class="flex items-center gap-2">
-          <span class="text-sm tabular-nums text-muted-foreground">已盘 <b class="text-foreground">{{ countedN }}</b>/{{ filtered.length }}<template v-if="countChanges.length"> · 差异 <b class="text-destructive">{{ countChanges.length }}</b></template></span>
-          <button class="ml-auto h-12 rounded-xl bg-primary px-5 text-base font-medium text-primary-foreground transition active:scale-95 disabled:opacity-50" :disabled="!countChanges.length" @click="submitCount">提交盘点</button>
-        </div>
-      </div>
 
       <!-- 桌面表格 -->
       <div v-else class="table-scroll overflow-x-auto rounded-xl border bg-card" :class="density === 'compact' ? 'text-[13px]' : ''">
         <table class="w-full border-collapse">
           <thead class="bg-card">
             <tr class="text-left text-xs text-muted-foreground">
-              <th class="border-b px-2 py-2"><input type="checkbox" class="accent-primary" :checked="sorted.length>0 && sorted.every(r=>sel[r.id])" @change="toggleAll" /></th>
+              <th v-if="!countMode" class="border-b px-2 py-2"><input type="checkbox" class="accent-primary" :checked="sorted.length>0 && sorted.every(r=>sel[r.id])" @change="toggleAll" /></th>
               <th class="border-b px-2 py-2">图</th>
               <th class="cursor-pointer select-none border-b px-3 py-2 transition hover:text-foreground" @click="setSort('name')">名称<span v-if="requiredSet.has('名称')" class="text-destructive"> *</span>{{ arrow("name") }}</th>
               <th v-if="cols.updated" class="cursor-pointer select-none border-b px-3 py-2 whitespace-nowrap transition hover:text-foreground" @click="setSort('updated')">更新{{ arrow("updated") }}</th>
@@ -2401,24 +2323,22 @@
               <th v-if="cols.sell" class="cursor-pointer select-none border-b px-3 py-2 text-right transition hover:text-foreground" @click="setSort('sell')">售价<span v-if="requiredSet.has('售价')" class="text-destructive"> *</span>{{ arrow("sell") }}</th>
               <th class="cursor-pointer select-none border-b px-3 py-2 text-center transition hover:text-foreground" @click="setSort('qty')">数量{{ arrow("qty") }}</th>
               <th v-if="cols.safety" class="cursor-pointer select-none border-b px-3 py-2 text-center transition hover:text-foreground" @click="setSort('safety')">安全库存<span v-if="requiredSet.has('安全库存')" class="text-destructive"> *</span>{{ arrow("safety") }}</th>
-              <th v-if="countMode" class="border-b px-3 py-2 text-center">实盘</th>
-              <th v-if="countMode" class="border-b px-3 py-2 text-center">差异</th>
-              <th class="border-b px-2 py-2 text-center">操作</th>
+              <th v-if="!countMode" class="border-b px-2 py-2 text-center">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="r in paged" :key="r.id" class="border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
-              <td :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
+              <td v-if="!countMode" :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
                   <img v-if="r.thumb" :src="imgUrl(r)" decoding="async" width="36" height="36" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover opacity-0 transition hover:scale-110" @load="revealImg" @click="preview = imgUrl(r)" />
-                  <button v-else class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
-                  <button v-if="r.thumb" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
+                  <button v-else-if="!countMode" class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
+                  <button v-if="r.thumb && !countMode" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
                 </div>
               </td>
               <td :class="cellPad">
                 <div class="flex min-w-0 flex-wrap items-center gap-1.5">
-                  <input v-model="r.name" class="w-40 min-w-0 flex-1 rounded-md border bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-ring/40" @change="setName(r)" />
+                  <input v-model="r.name" class="w-40 min-w-0 flex-1 rounded-md border bg-background px-2 py-1 outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="setName(r)" />
                   <NuxtLink :to="`/item/${r.id}`" class="text-primary hover:underline" title="打开详情"><MdiOpenInNew class="h-3.5 w-3.5" /></NuxtLink>
                   <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-destructive/15 px-2.5 py-0.5 text-xs font-medium text-destructive">待删除{{ trashAgeDays(r) !== null ? " · " + trashAgeDays(r) + "天" : "" }}</span>
                   <span v-if="isLow(r)" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600"><span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>待补货</span>
@@ -2427,25 +2347,25 @@
               </td>
               <td v-if="cols.updated" :class="[cellPad, 'whitespace-nowrap text-muted-foreground']" :title="r.updated">{{ fmtDate(r.updated) }}</td>
               <td v-if="cols.shelf" :class="cellPad">
-                <input v-model="r.serial" class="w-20 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="-" @change="setSerial(r)" />
+                <input v-model="r.serial" class="w-20 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" placeholder="-" :disabled="countMode" @change="setSerial(r)" />
               </td>
-              <td :class="cellPad"><select :value="r.brand" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '品牌', 'brand')"><option value="">-</option><option v-for="v in optsWith(brandOptions, r.brand)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.size" :class="cellPad"><select :value="r.size" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '尺寸', 'size')"><option value="">-</option><option v-for="v in optsWith(sizeOptions, r.size)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.spec" :class="cellPad"><select :value="r.spec" class="w-24 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '规格', 'spec')"><option value="">-</option><option v-for="v in optsWith(specOptions, r.spec)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.color" :class="cellPad"><select :value="r.color" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '颜色', 'color')"><option value="">-</option><option v-for="v in optsWith(colorOptions, r.color)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
-              <td v-if="cols.material" :class="cellPad"><select :value="r.material" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="onInline($event, r, '材质', 'material')"><option value="">-</option><option v-for="v in optsWith(materialOptions, r.material)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td :class="cellPad"><select :value="r.brand" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '品牌', 'brand')"><option value="">-</option><option v-for="v in optsWith(brandOptions, r.brand)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.size" :class="cellPad"><select :value="r.size" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '尺寸', 'size')"><option value="">-</option><option v-for="v in optsWith(sizeOptions, r.size)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.spec" :class="cellPad"><select :value="r.spec" class="w-24 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '规格', 'spec')"><option value="">-</option><option v-for="v in optsWith(specOptions, r.spec)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.color" :class="cellPad"><select :value="r.color" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '颜色', 'color')"><option value="">-</option><option v-for="v in optsWith(colorOptions, r.color)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
+              <td v-if="cols.material" :class="cellPad"><select :value="r.material" class="w-20 rounded-md border bg-background px-1 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="onInline($event, r, '材质', 'material')"><option value="">-</option><option v-for="v in optsWith(materialOptions, r.material)" :key="v" :value="v">{{ v }}</option><option value="__new__">＋ 新增…</option></select></td>
               <template v-for="f in extraFields" :key="'c' + f.name">
                 <td v-if="cols[f.name]" :class="cellPad">
-                  <input v-if="f.type === 'text'" v-model="r.extra[f.name]" class="w-24 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" @change="setExtra(r, f.name, f.type)" />
-                  <input v-else-if="f.type === 'number'" v-model.number="r.extra[f.name]" type="number" inputmode="decimal" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @change="setExtra(r, f.name, f.type)" />
-                  <input v-else-if="f.type === 'boolean'" v-model="r.extra[f.name]" type="checkbox" class="accent-primary" @change="setExtra(r, f.name, f.type)" />
+                  <input v-if="f.type === 'text'" v-model="r.extra[f.name]" class="w-24 rounded-md border bg-background px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
+                  <input v-else-if="f.type === 'number'" v-model.number="r.extra[f.name]" type="number" inputmode="decimal" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
+                  <input v-else-if="f.type === 'boolean'" v-model="r.extra[f.name]" type="checkbox" class="accent-primary" :disabled="countMode" @change="setExtra(r, f.name, f.type)" />
                 </td>
               </template>
               <td v-if="cols.purchase" :class="cellPad">
-                <input v-model.number="r.purchase" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
+                <input v-model.number="r.purchase" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
               </td>
               <td v-if="cols.sell" :class="cellPad">
-                <input v-model.number="r.sell" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setPrice(r,'sell')" />
+                <input v-model.number="r.sell" inputmode="decimal" type="number" step="0.01" class="w-20 rounded-md border bg-background px-2 py-1 text-right tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'sell')" />
               </td>
               <td :class="cellPad">
                 <div class="flex items-center justify-center gap-1">
@@ -2455,13 +2375,9 @@
                 </div>
               </td>
               <td v-if="cols.safety" :class="cellPad">
-                <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="w-16 rounded-md border bg-background px-2 py-1 text-center tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="setSafety(r)" />
+                <input v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="w-16 rounded-md border bg-background px-2 py-1 text-center tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :disabled="countMode" @focus="snapshot(r)" @change="setSafety(r)" />
               </td>
-              <td v-if="countMode" :class="cellPad">
-                <input v-model.number="r.count" inputmode="numeric" type="number" min="0" placeholder="-" class="w-16 rounded-md border bg-background px-2 py-1 text-center tabular-nums outline-none focus:ring-2 focus:ring-ring/40" />
-              </td>
-              <td v-if="countMode" :class="[cellPad, 'text-center']"><span :class="diffClass(r)">{{ diffText(r) }}</span></td>
-              <td :class="[cellPad, 'text-center']">
+              <td v-if="!countMode" :class="[cellPad, 'text-center']">
                 <div class="flex items-center justify-center gap-1">
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90" title="二维码标签" @click="showQR(r)"><MdiQrcode class="h-4 w-4" /></button>
                   <button class="grid h-7 w-7 place-items-center rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" title="复制一件" @click="duplicateRow(r)"><MdiContentCopy class="h-4 w-4" /></button>
