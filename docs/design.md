@@ -507,3 +507,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **前端** `frontend/pages/ship.vue`：待发货/已发货/已取消三 Tab（带计数）、待发徽章、卡片明细+合计、待发货卡实时库存不足预警（ amber）、确认/取消/撤销均走居中确认弹窗；新建发货单右侧抽屉（drawerWrap/drawerPanel）：买家/备注 + 商品搜索拣选（库存上限步进器）。
 - **单据页下线**：documents.vue 删除（用户判定无价值），侧栏「进出」组 入库/出库/**发货**（MdiPackageVariantClosed），Dock 进出项覆盖 /ship；入/出库页头 单据 链接换 发货。gx_document 表与 /gx/documents API 保留（后台审计用，不对用户暴露）。
 - **补丁教训**：rep_any/rep 的历史锚点是匹配复用目录里旧构建产物的，改 nav/dock 内容时旧变体必须冻结保留（本次新增 dock_prev、nav-group-icons 改 rep_any 三变体）。
+
+### 盘点模式沉浸式区分（12）
+- **问题**：盘点与物品同页差异太隐晦（仅横幅+输入框），且盘点开关被视图持久化（localStorage count=1）污染——点菜单「物品」也停在盘点模式，两入口体感完全一样。
+- **URL 是盘点唯一来源**：syncView/savePreset 落 localStorage 时剥离 count；onMounted 强制 `countMode = route.query.count === "1"`（兼容历史残留）；页内开关仍可用（经 syncView 写回 URL）。
+- **沉浸式盘点界面**：h1/title 动态「盘点 ↔ 物品台账」（countMode 声明上移到 useHead 前，避开 TDZ）；页头 amber 进度徽章「已盘 N/M」；卡片精简——隐藏价格行/操作行/左滑手势/长按多选（进入盘点自动清空选择）；实盘输入放大 h-12 w-24 text-xl；差异徽章化（盘盈墨色/盘亏红/持平灰）；移动端底部固定提交条（已盘 N/M · 差异 X + 提交盘点，避开 Dock），桌面保留横幅按钮（无差异时禁用）。

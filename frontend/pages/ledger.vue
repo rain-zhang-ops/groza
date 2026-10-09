@@ -37,8 +37,10 @@
     middleware: ["auth"],
   });
 
+  const countMode = ref(false);
+
   useHead({
-    title: "Groza | 台账查询",
+    title: () => (countMode.value ? "Groza | 盘点" : "Groza | 台账查询"),
   });
 
   type Row = {
@@ -711,7 +713,6 @@
   const loading = ref(true);
   const err = ref("");
   const msg = ref("");
-  const countMode = ref(false);
   const onlyLow = ref(false);
   const hideSoldOut = ref(true);
   const dataFilter = ref("");
@@ -961,7 +962,8 @@
       const v = view();
       for (const k of Object.keys(v)) if (v[k]) q[k] = String(v[k]);
       router.replace({ query: q });
-      localStorage.setItem("hb.ledger.view", JSON.stringify(v));
+      // 盘点是「任务模式」而非视图偏好：不落 localStorage，只能从菜单/页内开关进入
+      localStorage.setItem("hb.ledger.view", JSON.stringify({ ...v, count: "" }));
     }, 200);
   }
   watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter], syncView, { deep: true });
@@ -1126,6 +1128,7 @@
   let touchMoved = false;
   let lpTimer: number | undefined;
   function onTS(e: TouchEvent, r: Row) {
+    if (countMode.value) return;
     touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; touchMoved = false; swipe[r.id] = 0;
     if (lpTimer) window.clearTimeout(lpTimer);
     lpTimer = window.setTimeout(() => {
@@ -1168,6 +1171,8 @@
       const saved = localStorage.getItem("hb.ledger.view");
       if (saved) { try { applyView(JSON.parse(saved)); } catch (_e) { /* ignore */ } }
     }
+    // 盘点模式只认当前 URL（兼容历史 localStorage 里残留的 count=1）
+    countMode.value = route.query.count === "1";
     await load();
   });
   onBeforeUnmount(() => {
@@ -1686,6 +1691,8 @@
 
   // ---------- 盘点 ----------
   const countChanges = computed(() => rows.value.filter(r => r.count !== null && r.count !== r.qty));
+  const countedN = computed(() => rows.value.filter(r => r.count !== null).length);
+  watch(countMode, v => { if (v) { for (const k of Object.keys(sel)) delete sel[k]; } });
   const countReport = ref<{ open: boolean; busy: boolean; rows: Array<{ name: string; expected: number; counted: number; diff: number }> }>({ open: false, busy: false, rows: [] });
   function submitCount() {
     const changes = countChanges.value;
@@ -1713,6 +1720,12 @@
   function diff(r: Row): number | null { return r.count === null ? null : Number(r.count) - r.qty; }
   function diffText(r: Row): string { const d = diff(r); return d === null ? "" : (d > 0 ? "+" : "") + d; }
   function diffClass(r: Row): string { const d = diff(r); return d === null || d === 0 ? "" : d > 0 ? "text-foreground" : "text-destructive"; }
+  function diffBadge(r: Row): string {
+    const d = diff(r);
+    if (d === null) return "text-muted-foreground";
+    if (d === 0) return "bg-muted text-muted-foreground";
+    return d > 0 ? "bg-primary/10 text-foreground" : "bg-destructive/10 text-destructive";
+  }
 
   function setSort(k: string) {
     if (sort.key === k) sort.dir = sort.dir === 1 ? -1 : 1;
@@ -1883,7 +1896,7 @@
   function savePreset() {
     const name = presetName.value.trim();
     if (!name) { flash("填预设名"); return; }
-    presets.value = [...presets.value.filter(p => p.name !== name), { name, view: view() }];
+    presets.value = [...presets.value.filter(p => p.name !== name), { name, view: { ...view(), count: "" } }];
     localStorage.setItem("hb.ledger.presets", JSON.stringify(presets.value));
     presetName.value = "";
     flash("已保存预设：" + name);
@@ -1910,8 +1923,9 @@
       <!-- 顶栏 -->
       <header class="mb-6">
         <div class="flex flex-wrap items-center gap-2">
-          <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">物品台账</h1>
-          <span :class="badgeCls">{{ filtered.length }} 款</span>
+          <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">{{ countMode ? "盘点" : "物品台账" }}</h1>
+          <span v-if="countMode" class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">已盘 {{ countedN }} / {{ filtered.length }}</span>
+          <span v-else :class="badgeCls">{{ filtered.length }} 款</span>
           <span :class="badgeCls">共 {{ Math.round(anim.qty) }} 件</span>
           <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
             <span class="h-1.5 w-1.5 rounded-full animate-pulse" :class="onlyLow ? 'bg-white' : 'bg-amber-500'"></span>待补货 {{ totals.low }}
@@ -2247,9 +2261,9 @@
       </Transition>
       <Transition name="fold">
         <div v-if="countMode" class="mb-4 flex items-center gap-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-sm">
-          <MdiAlertOutline class="h-5 w-5 text-amber-600" />
-          <span>盘点模式：填写「实盘」，差异自动算出。</span>
-          <button :class="[btnPrimary, 'active:scale-95']" @click="submitCount">提交盘点（{{ countChanges.length }}）</button>
+          <MdiAlertOutline class="h-5 w-5 shrink-0 text-amber-600" />
+          <span class="min-w-0 flex-1">盘点模式：逐件填写「实盘」，差异自动算出，提交后生成盘点调整单。</span>
+          <button :class="[btnPrimary, 'hidden active:scale-95 md:inline-flex']" :disabled="!countChanges.length" @click="submitCount">提交盘点（{{ countChanges.length }}）</button>
         </div>
       </Transition>
 
@@ -2290,7 +2304,7 @@
                   <button class="rounded-md bg-muted px-2 py-1 text-muted-foreground transition active:scale-95" @click="promptSerial(r)">库位 {{ r.serial || "＋" }}</button>
                 </div>
                 <div v-if="attrLine(r)" class="mt-1 truncate text-xs text-muted-foreground">{{ attrLine(r) }}</div>
-                <div v-if="(r.purchase ?? 0) > 0 || (r.sell ?? 0) > 0" class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
+                <div v-if="!countMode && ((r.purchase ?? 0) > 0 || (r.sell ?? 0) > 0)" class="mt-2 flex items-center gap-3 text-sm tabular-nums text-muted-foreground">
                   <span v-if="(r.purchase ?? 0) > 0">进 <b class="font-medium text-foreground">¥{{ fmt(r.purchase) }}</b></span>
                   <span v-if="(r.sell ?? 0) > 0">售 <b class="font-medium text-foreground">¥{{ fmt(r.sell) }}</b></span>
                 </div>
@@ -2299,9 +2313,9 @@
             <div class="mt-3 flex items-center gap-2">
               <template v-if="countMode">
                 <span class="shrink-0 text-xs text-muted-foreground">实盘</span>
-                <input v-model.number="r.count" inputmode="numeric" type="number" min="0" :placeholder="String(r.qty)" class="h-11 w-20 shrink-0 rounded-xl border bg-background text-center text-base font-semibold tabular-nums outline-none focus:ring-2 focus:ring-ring/40" />
+                <input v-model.number="r.count" inputmode="numeric" type="number" min="0" :placeholder="String(r.qty)" class="h-12 w-24 shrink-0 rounded-xl border bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-ring/40" />
                 <span class="shrink-0 text-xs text-muted-foreground">账面 {{ r.qty }}</span>
-                <span class="ml-auto text-base font-semibold tabular-nums" :class="diffClass(r)">{{ diffText(r) || "—" }}</span>
+                <span class="ml-auto shrink-0 rounded-full px-2.5 py-1 text-sm font-semibold tabular-nums" :class="diffBadge(r)">{{ diffText(r) || "—" }}</span>
               </template>
               <template v-else>
                 <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
@@ -2313,7 +2327,7 @@
                 <input v-else v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="ml-auto h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :ref="focusEl" @blur="doneSafetyEdit(r)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
               </template>
             </div>
-            <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <div v-if="!countMode" class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95" @click="showGallery(r)"><MdiImageMultiple class="h-4 w-4" />图片</button>
               <button class="inline-flex h-9 items-center gap-1 rounded-lg border px-2.5 text-xs font-medium transition active:scale-95 disabled:opacity-40" :class="isTrashed(r) ? '' : 'border-destructive/40 text-destructive'" :disabled="saving[r.id]" @click="toggleTrash(r)">
                 <MdiRestore v-if="isTrashed(r)" class="h-4 w-4" /><MdiTrashCanOutline v-else class="h-4 w-4" />{{ isTrashed(r) ? "恢复" : "标记删除" }}
@@ -2337,6 +2351,14 @@
           没有匹配的物品
         </div>
       </TransitionGroup>
+
+      <!-- 盘点：移动端底部固定提交条 -->
+      <div v-if="countMode && isMobile" class="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 border-t bg-card/95 px-3 py-2 backdrop-blur-md">
+        <div class="flex items-center gap-2">
+          <span class="text-sm tabular-nums text-muted-foreground">已盘 <b class="text-foreground">{{ countedN }}</b>/{{ filtered.length }}<template v-if="countChanges.length"> · 差异 <b class="text-destructive">{{ countChanges.length }}</b></template></span>
+          <button class="ml-auto h-12 rounded-xl bg-primary px-5 text-base font-medium text-primary-foreground transition active:scale-95 disabled:opacity-50" :disabled="!countChanges.length" @click="submitCount">提交盘点</button>
+        </div>
+      </div>
 
       <!-- 桌面表格 -->
       <div v-else class="table-scroll overflow-x-auto rounded-xl border bg-card" :class="density === 'compact' ? 'text-[13px]' : ''">
