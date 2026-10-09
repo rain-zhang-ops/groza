@@ -267,7 +267,7 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 			for _, it := range ii.Items {
 				lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: float64(it.Count), UnitCost: float64(it.Cost)})
 			}
-			gxRecordDocument(ctx.GID.String(), "intake", ii.ID, ii.Supplier, ii.Note, "posted", ii.TS, lines)
+			gxRecordDocumentLogged(ctx.GID.String(), "intake", ii.ID, ii.Supplier, ii.Note, "posted", ii.TS, lines)
 		}
 		resp := map[string]any{"intake": ii, "errors": errs}
 		idemStore(key, resp)
@@ -534,7 +534,7 @@ func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 			for _, it := range ob.Items {
 				lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: -float64(it.Count)})
 			}
-			gxRecordDocument(ctx.GID.String(), "outbound", ob.ID, ob.Reason, ob.Note, "posted", ob.TS, lines)
+			gxRecordDocumentLogged(ctx.GID.String(), "outbound", ob.ID, ob.Reason, ob.Note, "posted", ob.TS, lines)
 		}
 		resp := map[string]any{"outbound": ob, "errors": errs}
 		idemStore(key, resp)

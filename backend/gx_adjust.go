@@ -87,7 +87,7 @@ func (a *app) handleGxAdjust() errchain.HandlerFunc {
 		code := bizRandID()
 		ts := bizNow()
 		if len(docLines) > 0 {
-			gxRecordDocument(ctx.GID.String(), "adjust", code, "", body.Note, "posted", ts, docLines)
+			gxRecordDocumentLogged(ctx.GID.String(), "adjust", code, "", body.Note, "posted", ts, docLines)
 			auditLogG(ctx.GID.String(), "gx.adjust", map[string]any{"code": code, "items": len(docLines), "gain": gain, "loss": loss})
 		}
 		return server.JSON(w, http.StatusOK, map[string]any{

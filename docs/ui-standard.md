@@ -111,7 +111,7 @@ const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-
 
 ## 8. 两套页面体系（现状，收敛方向）
 
-- **主流体系**（tasks/ledger/intake/outbound/records×2/documents）：手写 class、`rounded-xl/2xl`、页内常量、msg 轻提示。
+- **主流体系**（tasks/ledger/intake/outbound/documents）：手写 class、`rounded-xl/2xl`、页内常量、msg 轻提示。（records×2 已删除，功能并入 documents，见 design.md 第 10 节）
 - **collection 体系**（fields/ui-options）：shadcn `<Button>`、`rounded-md`、toast、Teleport 页头按钮。
 - **收敛方向**：collection 两页并入主流体系（圆角升 `rounded-xl`、加骨架屏、`inputCls` 统一）；`btnPrimary/btnGhost/inputCls/chip` 四个常量抽为共享模块 `frontend/composables/uiClasses.ts`，消灭 6+ 份重复定义。
 

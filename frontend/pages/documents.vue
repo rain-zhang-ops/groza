@@ -16,7 +16,11 @@
     { v: "outbound", label: "出库" },
     { v: "adjust", label: "盘点调整" },
   ] as const;
-  const kind = ref<"intake" | "outbound" | "adjust">("intake");
+  type Kind = (typeof KIND)[number]["v"];
+  const route = useRoute();
+  const router = useRouter();
+  function kindFromQuery(v: unknown): Kind { return KIND.some(k => k.v === v) ? (v as Kind) : "intake"; }
+  const kind = ref<Kind>(kindFromQuery(route.query.kind));
   const docs = ref<Doc[]>([]);
   const loading = ref(true);
   const err = ref("");
@@ -52,7 +56,12 @@
     for (const d of matched.value) if (!d.rolledBack) { cnt += (d.items || []).reduce((a, it) => a + it.count, 0); cost += d.totalCost || 0; }
     return { cnt, cost };
   });
-  watch(kind, () => { q.value = ""; fParty.value = ""; dFrom.value = ""; dTo.value = ""; load(); });
+  watch(kind, k => {
+    q.value = ""; fParty.value = ""; dFrom.value = ""; dTo.value = "";
+    if (route.query.kind !== k) router.replace({ query: { ...route.query, kind: k } });
+    load();
+  });
+  watch(() => route.query.kind, v => { const k = kindFromQuery(v); if (k !== kind.value) kind.value = k; });
   function resetFilters() { q.value = ""; fParty.value = ""; dFrom.value = ""; dTo.value = ""; showRolled.value = true; }
 
   async function load() {

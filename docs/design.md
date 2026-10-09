@@ -494,3 +494,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **生命周期**：`pagehide` 主动关闭连接并清空回调（浏览器无需代杀，控制台从此干净）；`pageshow(persisted)` / `visibilitychange=visible` / `online` 时检测 readyState，死连接立即重连并重置退避（不等 backoff）；`onerror` 降为 debug（错误后必有 close，重连统一由 onclose 安排）。
 - **防重复**：connect 前检查 OPEN/CONNECTING；恢复路径复用既有 `scheduleReconnect` 指数退避（1s→30s 封顶）。
 - **验证**：/tmp/bfcache-test.py（Playwright + init_script 打 docId/pageshow 标记）；测试环境因自签证书 SW 等因素不进 bfcache，降级判定通过——离开再返回零 bfcache/WS 报错、WS 自动重连成功。
+
+### 记录页收敛进单据（10）
+- **删除 /intake-records、/outbound-records**：与单据页功能重叠 90% 且不在菜单（仅入/出库页头链接可达）。入库页头去掉「入库记录」；出库页「单据」链接带 `?kind=outbound` 直达出库 Tab。旧路由 404，rebuild.sh/check.sh 同步除名（含清理前端复用目录残留 `rm -f`）。
+- **单据页 kind 参数化**：`?kind=` 初始化 Tab、切 Tab `router.replace` 同步 URL、监听 query 变化（页内跳转也生效）。
+- **落库不再静默**：gxRecordDocument 改返回 error；gxRecordDocumentLogged 统一兜底（log.Printf 进 docker logs + 异步触发对账）；gxRepairDocumentsFromBiz 以 biz JSON 权威存储为准幂等回填缺失单据并同步回滚状态；单据页首次查询 sync.Once 自动对账一次。上线即回填 12 条历史遗漏（150→162 条），当前 0 缺失。盘点调整无 biz JSON 副本，不在对账范围（失败仅日志）。

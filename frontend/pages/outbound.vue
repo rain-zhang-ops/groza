@@ -266,9 +266,8 @@
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">出库</h1>
         <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
-          <NuxtLink to="/outbound-records" :class="btnGhost">出库记录</NuxtLink>
           <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
-          <NuxtLink to="/documents" :class="btnGhost">单据</NuxtLink>
+          <NuxtLink to="/documents?kind=outbound" :class="btnGhost">单据</NuxtLink>
           <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
 

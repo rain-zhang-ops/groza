@@ -8,8 +8,10 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -26,22 +28,26 @@ type gxDocLine struct {
 	After    float64
 }
 
-// gxRecordDocument 幂等写入一张单据（已存在同 group+kind+code 则跳过）。best-effort。
-func gxRecordDocument(gid, kind, code, party, note, status, ts string, lines []gxDocLine) {
+// gxRecordDocument 幂等写入一张单据（已存在同 group+kind+code 则跳过）。
+// 失败返回 error——调用方必须记录日志并触发 gxRepairDocumentsFromBiz 对账，
+// 单据页是唯一记录视图，不允许静默丢单。
+func gxRecordDocument(gid, kind, code, party, note, status, ts string, lines []gxDocLine) error {
 	db, err := gxOpen()
 	if err != nil {
-		return
+		return err
 	}
 	defer db.Close()
 	tx, err := db.Begin()
 	if err != nil {
-		return
+		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	var n int
-	_ = tx.QueryRow(`SELECT COUNT(*) FROM gx_document WHERE group_id=? AND kind=? AND code=?`, gid, kind, code).Scan(&n)
+	if err = tx.QueryRow(`SELECT COUNT(*) FROM gx_document WHERE group_id=? AND kind=? AND code=?`, gid, kind, code).Scan(&n); err != nil {
+		return err
+	}
 	if n > 0 {
-		return
+		return nil
 	}
 	docID := uuid.NewString()
 	posted := any(nil)
@@ -50,15 +56,52 @@ func gxRecordDocument(gid, kind, code, party, note, status, ts string, lines []g
 	}
 	if _, err = tx.Exec(`INSERT INTO gx_document (id,group_id,kind,code,party,note,status,created_at,posted_at,idem_key)
 		VALUES (?,?,?,?,?,?,?,?,?,?)`, docID, gid, kind, code, party, note, status, ts, posted, gid+":"+kind+":"+code); err != nil {
-		return
+		return err
 	}
 	for _, l := range lines {
 		if _, err = tx.Exec(`INSERT INTO gx_document_line (id,group_id,document_id,item_id,qty,unit_cost,qty_before,qty_after)
 			VALUES (?,?,?,?,?,?,?,?)`, uuid.NewString(), gid, docID, l.ItemID, l.Qty, l.UnitCost, l.Before, l.After); err != nil {
-			return
+			return err
 		}
 	}
-	_ = tx.Commit()
+	return tx.Commit()
+}
+
+// gxRepairDocumentsFromBiz 以 biz JSON 权威存储为准，回填缺失的入/出库单据
+// 并同步回滚状态（幂等）。盘点调整无 biz JSON 副本，不在对账范围内。
+func gxRepairDocumentsFromBiz(gid string) {
+	for _, ii := range loadIntakes() {
+		lines := make([]gxDocLine, 0, len(ii.Items))
+		for _, it := range ii.Items {
+			lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: it.Count, UnitCost: it.Cost})
+		}
+		if err := gxRecordDocument(gid, "intake", ii.ID, ii.Supplier, ii.Note, "posted", ii.TS, lines); err == nil {
+			if ii.RolledBack {
+				gxMarkRolledBack(gid, "intake", ii.ID)
+			}
+		}
+	}
+	for _, ob := range loadOutbounds() {
+		lines := make([]gxDocLine, 0, len(ob.Items))
+		for _, it := range ob.Items {
+			lines = append(lines, gxDocLine{ItemID: it.EntityID, Qty: -it.Count})
+		}
+		if err := gxRecordDocument(gid, "outbound", ob.ID, ob.Reason, ob.Note, "posted", ob.TS, lines); err == nil {
+			if ob.RolledBack {
+				gxMarkRolledBack(gid, "outbound", ob.ID)
+			}
+		}
+	}
+}
+
+var gxRepairOnce sync.Once
+
+// gxRecordDocumentLogged 落库并兜底：失败记日志（docker logs 可见）并异步触发对账回填。
+func gxRecordDocumentLogged(gid, kind, code, party, note, status, ts string, lines []gxDocLine) {
+	if err := gxRecordDocument(gid, kind, code, party, note, status, ts, lines); err != nil {
+		log.Printf("[gx] 单据落库失败 kind=%s code=%s: %v（已触发对账回填）", kind, code, err)
+		go gxRepairDocumentsFromBiz(gid)
+	}
 }
 
 // gxMarkRolledBack 将单据标记为已回滚。best-effort。
@@ -74,6 +117,10 @@ func gxMarkRolledBack(gid, kind, code string) {
 
 func (a *app) handleGxDocuments() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		ctx := services.NewContext(r.Context())
+		gid := ctx.GID.String()
+		// 首次查询单据页时做一次对账回填（幂等、秒级），修复历史落库失败
+		gxRepairOnce.Do(func() { go gxRepairDocumentsFromBiz(gid) })
 		kind := r.URL.Query().Get("kind")
 		limit := 200
 		if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && v > 0 && v <= 1000 {
@@ -85,8 +132,6 @@ func (a *app) handleGxDocuments() errchain.HandlerFunc {
 		}
 		defer db.Close()
 
-		ctx := services.NewContext(r.Context())
-		gid := ctx.GID.String()
 		q := `SELECT id,kind,code,party,note,status,created_at FROM gx_document WHERE group_id=?`
 		args := []any{gid}
 		if kind != "" {
