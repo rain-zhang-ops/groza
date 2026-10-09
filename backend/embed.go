@@ -81,10 +81,10 @@ func embedCompute(body []byte) ([]float32, error) {
 	}
 	dataURL := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(body)
 	reqBody, _ := json.Marshal(map[string]any{
-		"model":            embedModel(),
-		"encoding_format":  "float",
-		"dimensions":       embedDims,
-		"input":            []any{map[string]any{"type": "image_url", "image_url": map[string]string{"url": dataURL}}},
+		"model":           embedModel(),
+		"encoding_format": "float",
+		"dimensions":      embedDims,
+		"input":           []any{map[string]any{"type": "image_url", "image_url": map[string]string{"url": dataURL}}},
 	})
 	req, err := http.NewRequest("POST", embedEndpoint, bytes.NewReader(reqBody))
 	if err != nil {
