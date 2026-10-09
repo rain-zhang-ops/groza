@@ -811,8 +811,7 @@
   const filterOpen = ref(false);
   const moreFilters = ref(false);
   const density = ref<"comfortable" | "compact">("comfortable");
-  const page = ref(1);
-  const pageSize = ref(50);
+  // 连续滚动（全端统一，见 shown/shownList）：翻页机制已移除（设计标准 §11）
 
   const sel = reactive<Record<string, boolean>>({});
   const trashed = reactive<Record<string, boolean>>({});
@@ -1064,7 +1063,7 @@
     }, 200);
   }
   watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter], syncView, { deep: true });
-  watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter, pageSize], () => { page.value = 1; shown.value = MOBILE_BATCH; }, { deep: true });
+  watch([filter, sort, onlyLow, hideSoldOut, countMode, dataFilter], () => { shown.value = MOBILE_BATCH; }, { deep: true });
   // 侧栏「物品 / 盘点」是同页跳转（/ledger ↔ /ledger?count=1），组件不重挂载，需监听 query 同步盘点模式
   watch(() => route.query.count, (v) => { const want = v === "1"; if (want !== countMode.value) countMode.value = want; });
   watch(cols, () => localStorage.setItem("hb.ledger.cols", JSON.stringify(cols)), { deep: true });
@@ -1275,6 +1274,7 @@
     // 盘点模式只认当前 URL（兼容历史 localStorage 里残留的 count=1）
     countMode.value = route.query.count === "1";
     await load();
+    applyActionQuery();
     await nextTick();
     onScrollLoadMore();
   });
@@ -1673,7 +1673,6 @@
       return va < vb ? -1 * dir : va > vb ? 1 * dir : 0;
     });
   });
-  const totalPages = computed(() => Math.max(1, Math.ceil(sorted.value.length / pageSize.value)));
   const DEDICATED_FIELDS = new Set(["品牌", "尺寸", "规格", "颜色", "材质", "进价", "售价", "安全库存"]);
   const schemaFields = computed(() => {
     const seen = new Map<string, string>();
@@ -1741,11 +1740,7 @@
     const ok = await putFields(r, { [name]: payload });
     if (ok) flash("已保存：" + name);
   }
-  const paged = computed(() => {
-    const start = (page.value - 1) * pageSize.value;
-    return sorted.value.slice(start, start + pageSize.value);
-  });
-  // 移动端无限滚动：首批 30 条，哨兵接近视口即追加（scroll 监听，IO 对快速跳转不可靠）
+  // 连续滚动（全端统一）：首批 30 条，哨兵接近视口即追加（scroll 监听，IO 对快速跳转不可靠）
   const MOBILE_BATCH = 30;
   const shown = ref(MOBILE_BATCH);
   const shownList = computed(() => sorted.value.slice(0, shown.value));
@@ -1755,11 +1750,6 @@
     if (!el || shown.value >= sorted.value.length) return;
     if (el.getBoundingClientRect().top < window.innerHeight + 400) shown.value += MOBILE_BATCH;
   }
-  function gotoPage(p: number) {
-    page.value = Math.min(Math.max(1, p), totalPages.value);
-    if (import.meta.client) window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-  watch(totalPages, (tp) => { if (page.value > tp) page.value = tp; });
   const totals = computed(() => {
     let qty = 0, cost = 0, retail = 0, low = 0, sold = 0;
     for (const r of filtered.value) {
@@ -1848,6 +1838,19 @@
     () => !!batchPreview.value && (cancelBatch(), true),
   ]);
 
+  // ---------- 命令面板直达动作：?add=1 打开新增抽屉；?ai=1 打开 AI 拍照 ----------
+  function applyActionQuery() {
+    const qq = route.query;
+    if (qq.add === "1" || qq.ai === "1") {
+      if (qq.add === "1") addOpen.value = true;
+      if (qq.ai === "1") pickAI();
+      const rest: Record<string, any> = { ...qq };
+      delete rest.add; delete rest.ai;
+      void router.replace({ query: rest });
+    }
+  }
+  watch(() => [route.query.add, route.query.ai], applyActionQuery);
+
   function rowClass(r: Row): string {
     if (isTrashed(r)) return "bg-destructive/10";
     if (isLow(r)) return "bg-amber-500/10";
@@ -1859,8 +1862,8 @@
   const selectedRows = computed(() => rows.value.filter(r => sel[r.id]));
   const selectedCount = computed(() => selectedRows.value.length);
   function toggleAll() {
-    const all = paged.value.length > 0 && paged.value.every(r => sel[r.id]);
-    for (const r of paged.value) sel[r.id] = !all;
+    const all = shownList.value.length > 0 && shownList.value.every(r => sel[r.id]);
+    for (const r of shownList.value) sel[r.id] = !all;
   }
   function clearSel() { for (const k of Object.keys(sel)) sel[k] = false; }
 
@@ -2499,7 +2502,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in paged" :key="r.id" class="group border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
+            <tr v-for="r in shownList" :key="r.id" class="group border-b transition-colors last:border-0" :class="[rowClass(r), isSaved(r) ? 'row-flash' : '']">
               <td v-if="!countMode" :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary transition-opacity" :class="selectedCount || sel[r.id] ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
@@ -2571,25 +2574,10 @@
         </div>
       </div>
 
-      <!-- 无限滚动哨兵 / 到底提示（卡片视图全端 + 移动列表；桌面表格用分页） -->
-      <div v-if="(viewMode === 'card' || isMobile) && sorted.length" class="py-3 text-center text-xs tabular-nums text-muted-foreground">
-        <span v-if="shownList.length < sorted.length" ref="loadMoreEl">下拉加载更多（{{ shownList.length }}/{{ sorted.length }}）</span>
+      <!-- 无限滚动哨兵 / 到底提示（全端全视图统一连续滚动，无翻页） -->
+      <div v-if="sorted.length" class="py-3 text-center text-xs tabular-nums text-muted-foreground">
+        <span v-if="shownList.length < sorted.length" ref="loadMoreEl">滚动加载更多（{{ shownList.length }}/{{ sorted.length }}）</span>
         <span v-else>共 {{ sorted.length }} 条 · 到底了</span>
-      </div>
-
-      <!-- 分页（桌面表格；其余视图用无限滚动） -->
-      <div v-if="sorted.length && viewMode === 'list'" class="mt-4 hidden flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm md:flex">
-        <select v-model.number="pageSize" class="hidden rounded-lg border bg-background px-2 py-1.5 text-sm md:block" @change="gotoPage(1)">
-          <option :value="20">20/页</option>
-          <option :value="50">50/页</option>
-          <option :value="100">100/页</option>
-          <option v-if="!isMobile" :value="100000">全部</option>
-        </select>
-        <button class="hidden h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40 md:block" :disabled="page <= 1" @click="gotoPage(1)">首页</button>
-        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page <= 1" @click="gotoPage(page - 1)">上一页</button>
-        <span class="px-2 tabular-nums text-muted-foreground">{{ page }} / {{ totalPages }} · 共 {{ sorted.length }} 条</span>
-        <button class="h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40" :disabled="page >= totalPages" @click="gotoPage(page + 1)">下一页</button>
-        <button class="hidden h-11 rounded-lg border px-3 font-medium transition active:scale-95 disabled:opacity-40 md:block" :disabled="page >= totalPages" @click="gotoPage(totalPages)">末页</button>
       </div>
     </div>
 

@@ -865,6 +865,37 @@ def main():
         'import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";',
         'import MdiClipboardCheckOutline from "~icons/mdi/clipboard-check-outline";\n  import MdiShapeOutline from "~icons/mdi/shape-outline";',
         "nav-icon-shape-outline")
+
+    # ---- 9b. ⌘K 命令面板：动作贴合 Groza IA；Ctrl 热键同时响应 Mac ⌘ ----
+    rep(f"{fe}/components/ui/dialog-provider/utils.ts",
+        "(key.ctrl === undefined || event.ctrlKey === key.ctrl)",
+        "(key.ctrl === undefined || event.ctrlKey === key.ctrl || (key.ctrl && event.metaKey))",
+        "hotkey-meta-key")
+    rep(dv,
+        '''  const quickMenuActions = reactive([
+    ...dropdown.map(v => ({
+      text: computed(() => v.name.value),
+      dialogId: v.dialogId,
+      shortcut: v.shortcut.split("+")[1] as string,
+      id: v.id,
+      type: "create" as const,
+    })),
+    ...nav.flatMap(v => [
+      { text: computed(() => v.name.value), href: v.to, type: "navigate" as const },
+      ...(v.collapsible || []).map(c => ({ text: computed(() => c.name.value), href: c.to, type: "navigate" as const })),
+    ]),
+  ]);''',
+        '''  const quickMenuActions = reactive([
+    { text: "新增物品", href: "/ledger?add=1", type: "navigate" as const },
+    { text: "AI 新增（拍照识别）", href: "/ledger?ai=1", type: "navigate" as const },
+    ...nav.map(v => ({ text: computed(() => v.name.value), href: v.to, type: "navigate" as const })),
+  ]);''',
+        "quickmenu-groza")
+    # 创建组为空时隐藏分组标题
+    rep(f"{fe}/components/App/QuickMenuModal.vue",
+        "      <CommandGroup :heading=\"t('global.create')\">",
+        "      <CommandGroup v-if=\"props.actions.some(i => i.type === 'create')\" :heading=\"t('global.create')\">",
+        "quickmenu-create-group-cond")
     navgroups_src = (
         '\n\n  const navGroups = computed(() => {\n'
         '    const out: { label: string; items: typeof nav }[] = [];\n'
@@ -1108,18 +1139,7 @@ def main():
         ':value="`global.navigate_${i + 1}`"',
         ':value="navigate.text"',
         "cmdk-navigate-value")
-    nav_old = (
-        '    ...nav.map(v => ({\n'
-        '      text: computed(() => v.name.value),\n'
-        '      href: v.to,\n'
-        '      type: "navigate" as const,\n'
-        '    })),')
-    nav_new = (
-        '    ...nav.flatMap(v => [\n'
-        '      { text: computed(() => v.name.value), href: v.to, type: "navigate" as const },\n'
-        '      ...(v.collapsible || []).map(c => ({ text: computed(() => c.name.value), href: c.to, type: "navigate" as const })),\n'
-        '    ]),')
-    rep(dv, nav_old, nav_new, "cmdk-nav-children")
+    # （已废弃）cmdk-nav-children：quickMenuActions 已由 quickmenu-groza 整段定义（含 collapsible 移除）
 
     # ---- 10. 模板模块：保留字段类型 + 可选类型 + 移动友好 + 并入集合 ----
     # (a) CreateModal：允许选类型，字段行移动友好
