@@ -2024,30 +2024,21 @@
           </button>
           <button v-if="soldCount" class="inline-flex items-center gap-1 transition active:scale-95 disabled:opacity-50" :class="hideSoldOut ? [badgeCls, 'py-1'] : 'rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary'" :disabled="dataFilter === 'soldout'" :title="dataFilter === 'soldout' ? '当前正在查看售罄物品' : ''" @click="hideSoldOut = !hideSoldOut"><MdiEyeOffOutline v-if="hideSoldOut" class="h-3.5 w-3.5" /><MdiEyeOutline v-else class="h-3.5 w-3.5" />售罄 {{ soldCount }}</button>
           <div v-if="!countMode" class="ml-auto flex w-full flex-wrap items-center justify-end gap-2 md:w-auto md:flex-nowrap">
-            <!-- 桌面完整操作（盘点模式整组隐藏，盘点只改数量） -->
+            <!-- 桌面完整操作（盘点模式整组隐藏，盘点只改数量）；低频动作收进「更多」菜单（设计标准 §10 页头 ≤5 按钮） -->
             <div class="hidden items-center gap-2 md:flex">
               <button v-if="!isMobile" :class="[btnGhost, 'active:scale-95']" @click="openScan"><MdiBarcodeScan class="h-4 w-4" /> 扫码</button>
-              <button v-if="canInstall" :class="[btnGhost, 'active:scale-95']" @click="install"><MdiCellphoneArrowDown class="h-4 w-4" /> 安装</button>
-              <button :class="[btnGhost, 'active:scale-95']" @click="toggleNotify"><MdiBellRing class="h-4 w-4" /> {{ notifyOn ? "关闭提醒" : "补货提醒" }}</button>
-              <button :class="[btnGhost, 'active:scale-95']" @click="qualityOpen = true"><MdiClipboardCheckOutline class="h-4 w-4" /> 数据体检</button>
-              <button :class="[btnGhost, 'active:scale-95']" @click="importOpen = true"><MdiFileImportOutline class="h-4 w-4" /> 批量导入</button>
-              <button :class="[btnGhost, 'active:scale-95']" @click="exportCSV"><MdiDownload class="h-4 w-4" /> 导出CSV</button>
-              <button :class="[btnGhost, 'active:scale-95']" @click="copyList"><MdiContentPaste class="h-4 w-4" /> 复制清单</button>
-              <button :class="[btnGhost, 'active:scale-95']" @click="exportImage"><MdiImage class="h-4 w-4" /> 长图</button>
-              <button :class="[btnGhost, bigFont ? 'border-primary text-primary' : '', 'active:scale-95']" @click="toggleBigFont"><MdiFormatSize class="h-4 w-4" /> {{ bigFont ? "标准字号" : "大字号" }}</button>
               <Transition name="pop">
                 <button v-if="undoLast" class="inline-flex items-center gap-1 rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-600 transition-all hover:bg-amber-500/20 active:scale-95" @click="undo"><MdiUndo class="h-4 w-4" /> 撤销</button>
               </Transition>
-              <label class="flex items-center gap-1 rounded-lg border px-2 py-1.5 text-xs text-muted-foreground" title="联网搜索 1元/次，请省着用">
+              <label class="flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-1.5 text-xs text-muted-foreground" title="联网搜索 1元/次，请省着用">
                 <input v-model="aiSearch" type="checkbox" class="accent-primary" /> 联网
               </label>
               <span class="inline-block h-2 w-2 rounded-full" :class="wsOk ? 'bg-primary' : 'bg-muted-foreground/40'" :title="wsOk ? '实时同步已连接' : '实时同步未连接'"></span>
               <span v-if="offline" class="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600">离线<template v-if="pendingN"> · {{ pendingN }}</template></span>
-              <button v-if="trashedCount && isOwner" :class="[btnGhost, 'active:scale-95 border-destructive/40 text-destructive hover:bg-destructive/10']" @click="purgeAll"><MdiDeleteForever class="h-4 w-4" /> 清空回收站 {{ trashedCount }}</button>
               <button :class="[btnGhost, 'active:scale-95']" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
             </div>
-            <!-- 移动：更多菜单 -->
-            <details class="relative md:hidden">
+            <!-- 更多菜单（移动/桌面统一）：低频批量与导出动作 -->
+            <details class="relative">
               <summary :class="[btnGhost, 'list-none active:scale-95']">更多 ⋯</summary>
               <div class="absolute right-0 z-40 mt-1 w-44 origin-top-right rounded-lg border bg-popover p-1.5 text-sm shadow-lg animate-pop">
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="toggleNotify"><MdiBellRing class="mr-1.5 inline h-4 w-4" />{{ notifyOn ? "关闭补货提醒" : "开启补货提醒" }}</button>

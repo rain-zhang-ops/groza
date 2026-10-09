@@ -598,3 +598,10 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **tab 数组收敛**：fields tab 改为幂等 unify 块（正则清掉全部 id:"fields" 历史条目 → 注入唯一最终形态），取代脆弱的「锚定追加 + rep_any 收敛」两段式——后者在收敛态上会重复追加（重复 tab 就是这么来的）。
 - **补丁教训（重要）**：同一串上「先 replace 再按旧偏移 splice」必错位——本轮因此切坏构建树的 collection/index.vue（吃掉 `</script>/<template>/<BaseContainer>/<Title>` 并复制了按钮残片），手工修复树文件后纠正补丁顺序（先脚本替换、再在新串上算模板位置）。失效块 `collection-tabs-label-mobile`（锚定已删的 tab 标记）随之一并废弃——**删除 HTML 结构类补丁时，必须 grep 下游锚定该结构的补丁块一并处理**。
 - **验证**：/collection/fields 无 tab 条/无管理集合卡/标题=库存架构/teleport 保存按钮存活；/collection/members 标题=成员；抽屉含「分类」且 /locations 可达；补丁二次执行全 SKIP 无 FAIL。8 项断言全过。
+
+### 中文化清扫 + 台账工具条收敛（23）
+- **中英混杂根因分两类**：UI 壳残留（登录页 HomeB[logo]x 大字标、GitHub/Mastodon/Discord/文档社交图标、语言下拉「中文（简体）（中文（简体）」重复、Toggle Sidebar 无障碍文案、18 个页面 useHead 标题「HomeBox |」）与**数据残留**（集合名「狗砸的宝藏's Home」是注册时上游自动命名，经 PUT /api/v1/groups 改名「狗砸的宝藏」，currency 保留）。
+- **登录页**：字标改「盒子 logo + Groza」；社交图标整段移除（保留语言选择器）；LanguageSelector 只显示母语名（不再 当前语言名+括号母语名 重复）。
+- **台账工具条（丑陋重灾区）**：桌面 11+ 按钮在 flex-nowrap 下被压缩竖排换行（补货提/醒、导出 CS/V）——根因是按钮无 `whitespace-nowrap` 且数量超设计标准 §10「页头 ≤5 按钮」。收敛：桌面可见 = 扫码/刷新/撤销(瞬时)/联网开关/同步状态点 + 更多⋯ + AI 新增 + 新增物品；低频动作（补货提醒/安装/数据体检/批量导入/导出CSV/复制清单/导出长图/大字号/清空回收站）全部收进「更多」菜单，菜单从 `md:hidden` 改为移动/桌面统一。btnGhost/btnPrimary 共享常量补 `whitespace-nowrap shrink-0`。
+- **实现**：登录页字标/社交图标为补丁块（login-wordmark-groza / login-social-rm 段替换）；标题清扫为 glob 巡检替换（`HomeBox |` → `Groza |`，幂等）；LanguageSelector/侧栏 sr 文案为 rep 块。
+- **验证**：登录页 Groza 字标+无社交图标+语言下拉不重复；台账工具条无竖排按钮、更多菜单含全部低频动作；6 页控件英文残留扫描零命中（允许 Groza/AI/CSV 等专有名词）。

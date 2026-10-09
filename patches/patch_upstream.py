@@ -333,6 +333,61 @@ def main():
         'title: "HomeBox | " + t("index.title"),',
         'title: "Groza | " + t("index.title"),',
         "brand-login-title")
+
+    # ---- 2d. 登录页中文化与品牌清扫 ----
+    # 大字标 HomeB[logo]x → Groza
+    rep(f"{fe}/pages/index.vue",
+        '          <h2 class="mt-1 flex text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">\n            HomeB\n            <AppLogo class="-mb-4 w-12" />\n            x\n          </h2>',
+        '          <h2 class="mt-1 flex items-center gap-3 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">\n            <AppLogo class="w-10 sm:w-12" />\n            Groza\n          </h2>',
+        "login-wordmark-groza")
+    # 社交图标（GitHub/Mastodon/Discord/文档）整段移除，保留语言选择
+    p_idx = f"{fe}/pages/index.vue"
+    s_idx = open(p_idx, encoding="utf-8").read()
+    if "<TooltipProvider" not in s_idx:
+        skip("login-social-rm")
+    else:
+        t0 = s_idx.find('        <TooltipProvider :delay-duration="0">')
+        t1 = s_idx.find("        </TooltipProvider>", t0)
+        lang_line = '<LanguageSelector class="z-10 text-primary" :expanded="false" />'
+        if t0 < 0 or t1 < 0 or lang_line not in s_idx[t0:t1]:
+            fail("login-social-rm", "TooltipProvider/LanguageSelector 锚点未找到")
+        else:
+            new_blk = ('        <div class="z-10 ml-auto mt-6 flex items-center gap-4 sm:mt-0">\n'
+                       f'          {lang_line}\n'
+                       '        </div>')
+            s_idx = s_idx[:t0] + new_blk + s_idx[t1 + len("        </TooltipProvider>"):]
+            open(p_idx, "w", encoding="utf-8").write(s_idx)
+            done("login-social-rm 登录页去社交图标")
+    # 语言下拉：同名语言不再重复显示（中文（简体）（中文（简体））→ 中文（简体））
+    rep(f"{fe}/components/App/LanguageSelector.vue",
+        '          {{ $t(`languages.${lang}`) }} ({{ $t(`languages.${lang}`, 1, { locale: lang }) }})',
+        '          {{ $t(`languages.${lang}`, 1, { locale: lang }) }}',
+        "lang-selector-dedup")
+    # 侧栏触发器无障碍文案中文化
+    rep(f"{fe}/components/ui/sidebar/SidebarTrigger.vue",
+        '<span class="sr-only">Toggle Sidebar</span>',
+        '<span class="sr-only">切换侧栏</span>',
+        "trigger-sr-zh")
+    rep(f"{fe}/components/ui/sidebar/SidebarRail.vue",
+        'aria-label="Toggle Sidebar"',
+        'aria-label="切换侧栏"',
+        "rail-aria-zh")
+    rep(f"{fe}/components/ui/sidebar/SidebarRail.vue",
+        'title="Toggle Sidebar"',
+        'title="切换侧栏"',
+        "rail-title-zh")
+    # 浏览器标题统一 Groza（上游各页 useHead 残留 "HomeBox |"）
+    import glob as _glob
+    n_title = 0
+    for f in _glob.glob(f"{fe}/pages/**/*.vue", recursive=True) + _glob.glob(f"{fe}/layouts/*.vue"):
+        s_f = open(f, encoding="utf-8").read()
+        if "HomeBox |" in s_f:
+            open(f, "w", encoding="utf-8").write(s_f.replace("HomeBox |", "Groza |"))
+            n_title += 1
+    if n_title:
+        done(f"title-groza 浏览器标题统一（{n_title} 文件）")
+    else:
+        skip("title-groza")
     patch_colors(fe)
     patch_fonts(fe)
     rebrand_locale(fe)
