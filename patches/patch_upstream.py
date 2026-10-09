@@ -313,6 +313,9 @@ def main():
         "collection": "集合", "scanner": "扫码",
     }
     m.update(rename)
+    # 集合页签命名对齐侧栏（去行话、消解组项同名）
+    tabs = d.setdefault("collection", {}).setdefault("tabs", {})
+    tabs.update({"notifiers": "通知", "settings": "集合设置", "entity_types": "结构"})
     json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     done("menu-zh 菜单统一中文")
 
@@ -530,7 +533,7 @@ def main():
         t_add = t_anchor + ('\n'
                             '    {\n'
                             '      id: "ui-options",\n'
-                            '      label: "选项配置",\n'
+                            '      label: "选项",\n'
                             '      to: "/collection/ui-options",\n'
                             '      icon: MdiTune,\n'
                             '    },')
@@ -542,14 +545,20 @@ def main():
             open(coll, "w", encoding="utf-8").write(c)
             done("collection-ui-options-tab")
 
+    # 历史注入的「选项配置」页签更名为「选项」（与侧栏一致）
+    rep_any(coll,
+        ['      id: "ui-options",\n      label: "选项配置",'],
+        '      id: "ui-options",\n      label: "选项",',
+        "tab-rename-ui-options")
+
     # 集合页「分类」tab（指向 /locations）
     rep(coll,
         '  import MdiTune from "~icons/mdi/tune";',
         '  import MdiTune from "~icons/mdi/tune";\n  import MdiFileTree from "~icons/mdi/file-tree";',
         "collection-locations-icon")
     rep(coll,
-        '    {\n      id: "ui-options",\n      label: "选项配置",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },',
-        '    {\n      id: "ui-options",\n      label: "选项配置",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },\n    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
+        '    {\n      id: "ui-options",\n      label: "选项",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },',
+        '    {\n      id: "ui-options",\n      label: "选项",\n      to: "/collection/ui-options",\n      icon: MdiTune,\n    },\n    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },',
         "collection-locations-tab")
 
     # 集合页「字段」tab（指向 /templates），并隐藏侧栏「模板」入口
@@ -562,10 +571,11 @@ def main():
         '    {\n      id: "locations",\n      label: "分类",\n      to: "/locations",\n      icon: MdiFileTree,\n    },\n    {\n      id: "fields",\n      label: "配置",\n      to: "/templates",\n      icon: MdiFormTextbox,\n    },',
         "collection-fields-tab")
     rep_any(coll,
-        ['      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
+        ['      id: "fields",\n      label: "库存架构",\n      to: "/collection/fields",',
+         '      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
          '      id: "fields",\n      label: "配置",\n      to: "/templates",',
          '      id: "fields",\n      label: "字段",\n      to: "/templates",'],
-        '      id: "fields",\n      label: "配置",\n      to: "/collection/fields",',
+        '      id: "fields",\n      label: "库存架构",\n      to: "/collection/fields",',
         "collection-fields-tab-target")
     dv_t = open(dv, encoding="utf-8").read()
     tpl_block = ('    {\n'
@@ -674,63 +684,63 @@ def main():
         '    },\n'
         '    {\n'
         '      icon: MdiTune,\n'
-        '      id: 9061, group: "库存配置",\n'
+        '      id: 9061, group: "配置",\n'
         '      active: computed(() => route.path === "/collection/fields"),\n'
-        '      name: computed(() => "字段 / 位置 / 媒体 / 组织"),\n'
+        '      name: computed(() => "库存架构"),\n'
         '      to: "/collection/fields",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiFormatListBulleted,\n'
-        '      id: 9062, group: "库存配置",\n'
+        '      id: 9062, group: "配置",\n'
         '      active: computed(() => route.path === "/collection/ui-options"),\n'
-        '      name: computed(() => "选项配置"),\n'
+        '      name: computed(() => "选项"),\n'
         '      to: "/collection/ui-options",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiTagMultiple,\n'
-        '      id: 9063, group: "库存配置",\n'
+        '      id: 9063, group: "配置",\n'
         '      active: computed(() => route.path === "/tags"),\n'
         '      name: computed(() => "标签"),\n'
         '      to: "/tags",\n'
         '    },\n'
         '    {\n'
+        '      icon: MdiFileTree,\n'
+        '      id: 9081, group: "配置",\n'
+        '      active: computed(() => route.path === "/collection/entity-types"),\n'
+        '      name: computed(() => "结构"),\n'
+        '      to: "/collection/entity-types",\n'
+        '    },\n'
+        '    {\n'
         '      icon: MdiAccountMultipleOutline,\n'
-        '      id: 61, group: "设置",\n'
+        '      id: 61, group: "管理",\n'
         '      active: computed(() => route.path === "/collection/members"),\n'
         '      name: computed(() => t("collection.tabs.members")),\n'
         '      to: "/collection/members",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiEmailOutline,\n'
-        '      id: 62, group: "设置",\n'
+        '      id: 62, group: "管理",\n'
         '      active: computed(() => route.path === "/collection/invites"),\n'
         '      name: computed(() => t("collection.tabs.invites")),\n'
         '      to: "/collection/invites",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiBellOutline,\n'
-        '      id: 63, group: "设置",\n'
+        '      id: 63, group: "管理",\n'
         '      active: computed(() => route.path === "/collection/notifiers"),\n'
         '      name: computed(() => t("collection.tabs.notifiers")),\n'
         '      to: "/collection/notifiers",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiCog,\n'
-        '      id: 64, group: "设置",\n'
+        '      id: 64, group: "管理",\n'
         '      active: computed(() => route.path === "/collection/settings"),\n'
         '      name: computed(() => t("collection.tabs.settings")),\n'
         '      to: "/collection/settings",\n'
         '    },\n'
         '    {\n'
-        '      icon: MdiFileTree,\n'
-        '      id: 9081, group: "高级",\n'
-        '      active: computed(() => route.path === "/collection/entity-types"),\n'
-        '      name: computed(() => "结构"),\n'
-        '      to: "/collection/entity-types",\n'
-        '    },\n'
-        '    {\n'
         '      icon: MdiWrench,\n'
-        '      id: 9082, group: "高级",\n'
+        '      id: 9082, group: "管理",\n'
         '      active: computed(() => route.path === "/collection/tools"),\n'
         '      name: computed(() => "工具"),\n'
         '      to: "/collection/tools",\n'
@@ -800,7 +810,7 @@ def main():
         '        </SidebarContent>'
     )
     s_nav = open(dv, encoding="utf-8").read()
-    if 'group: "概览"' in s_nav and "navGroups" in s_nav:
+    if '"库存架构"' in s_nav and "navGroups" in s_nav:
         skip("nav-restructure")
     else:
         marker = "  }[] = ["

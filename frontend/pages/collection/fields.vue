@@ -11,7 +11,7 @@
     middleware: ["auth"],
   });
 
-  useHead({ title: "Groza | 库存配置" });
+  useHead({ title: "Groza | 库存架构" });
 
   const TYPES = [
     { v: "text", label: "文本" },
