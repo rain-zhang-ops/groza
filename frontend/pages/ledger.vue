@@ -30,6 +30,7 @@
   import MdiFormatSize from "~icons/mdi/format-size";
   import MdiViewGridOutline from "~icons/mdi/view-grid-outline";
   import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";
+  import GxThumb from "~/components/GxThumb.vue";
   import MdiContentPaste from "~icons/mdi/content-paste";
   import MdiFormTextbox from "~icons/mdi/form-textbox";
   import MdiDotsHorizontal from "~icons/mdi/dots-horizontal";
@@ -1726,12 +1727,6 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
   function imgUrl(r: Row): string { return r.thumb ? `/api/v1/entities/${r.id}/attachments/${r.thumb}` : ""; }
-  function revealImg(e: Event) {
-    const img = e.target as HTMLImageElement;
-    const done = () => img.classList.remove("opacity-0");
-    if (typeof img.decode === "function") img.decode().then(done, done);
-    else done();
-  }
   const arrow = (k: string) => (sort.key === k ? (sort.dir === 1 ? " ▲" : " ▼") : "");
   function rowClass(r: Row): string {
     if (isTrashed(r)) return "bg-destructive/10";
@@ -2253,7 +2248,7 @@
             @touchend="onTE(r)"
           >
             <div class="flex gap-3">
-              <button v-if="r.thumb" class="shrink-0 self-start overflow-hidden rounded-xl border" @click="preview = imgUrl(r)"><img :src="imgUrl(r)" decoding="async" width="56" height="56" class="h-14 w-14 object-cover opacity-0 transition active:scale-95" @load="revealImg" /></button>
+              <button v-if="r.thumb" class="shrink-0 self-start overflow-hidden rounded-xl border" @click="preview = imgUrl(r)"><GxThumb :src="imgUrl(r)" box-class="h-14 w-14" /></button>
               <button v-else class="grid h-14 w-14 shrink-0 place-items-center self-start rounded-xl border border-dashed bg-muted/60 text-muted-foreground transition active:scale-95" @click="pickPhoto(r)"><MdiCamera class="h-5 w-5" /></button>
               <div class="min-w-0 flex-1">
                 <div class="flex items-start gap-1.5">
@@ -2315,7 +2310,7 @@
           class="flex items-center gap-2.5 px-3 py-2"
           :class="[isTrashed(r) || isSoldOut(r) ? 'opacity-60' : '', !isTrashed(r) && !isSoldOut(r) && isLow(r) ? 'border-l-2 border-l-amber-400' : '']"
         >
-          <img v-if="r.thumb" :src="imgUrl(r)" decoding="async" width="40" height="40" class="h-10 w-10 shrink-0 cursor-zoom-in rounded-lg border object-cover opacity-0 transition" @load="revealImg" @click="preview = imgUrl(r)" />
+          <GxThumb v-if="r.thumb" :src="imgUrl(r)" box-class="h-10 w-10 cursor-zoom-in rounded-lg border" @click="preview = imgUrl(r)" />
           <span v-else class="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-dashed bg-muted/60 text-[10px] text-muted-foreground">无图</span>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
@@ -2365,7 +2360,7 @@
               <td v-if="!countMode" :class="[cellPad, 'px-2!']"><input v-model="sel[r.id]" type="checkbox" class="accent-primary" /></td>
               <td :class="[cellPad, 'px-2!']">
                 <div class="relative inline-block">
-                  <img v-if="r.thumb" :src="imgUrl(r)" decoding="async" width="36" height="36" class="h-9 w-9 cursor-zoom-in rounded-md border object-cover opacity-0 transition hover:scale-110" @load="revealImg" @click="preview = imgUrl(r)" />
+                  <GxThumb v-if="r.thumb" :src="imgUrl(r)" box-class="h-9 w-9 cursor-zoom-in rounded-md border transition hover:scale-110" @click="preview = imgUrl(r)" />
                   <button v-else-if="!countMode" class="grid h-9 w-9 place-items-center rounded-md border text-muted-foreground transition hover:bg-muted" @click="pickPhoto(r)"><MdiCamera class="h-4 w-4" /></button>
                   <button v-if="r.thumb && !countMode" class="absolute -bottom-1 -right-1 grid h-4 w-4 place-items-center rounded-full bg-primary text-primary-foreground" title="换图" @click="pickPhoto(r)"><MdiCamera class="h-2.5 w-2.5" /></button>
                 </div>

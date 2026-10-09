@@ -4,6 +4,7 @@
   import MdiBarcodeScan from "~icons/mdi/barcode-scan";
   import MdiPlus from "~icons/mdi/plus";
   import MdiMinus from "~icons/mdi/minus";
+  import GxThumb from "~/components/GxThumb.vue";
 
   definePageMeta({
     middleware: ["auth"],
@@ -318,7 +319,7 @@
                 class="flex items-center gap-2 rounded-xl px-2 py-1.5"
                 :class="r.qty <= 0 ? 'opacity-50' : 'hover:bg-muted/60'"
               >
-                <img v-if="r.thumb" :src="imgUrl(r)" loading="lazy" class="h-11 w-11 shrink-0 rounded-lg border object-cover" alt="" />
+                <GxThumb v-if="r.thumb" :src="imgUrl(r)" box-class="h-11 w-11 rounded-lg border" />
                 <span v-else class="grid h-11 w-11 shrink-0 place-items-center rounded-lg border border-dashed bg-muted/60 text-[10px] text-muted-foreground">无图</span>
                 <div class="min-w-0 flex-1">
                   <div class="truncate text-sm font-medium">{{ r.name }}</div>

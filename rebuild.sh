@@ -41,7 +41,7 @@ command -v go     >/dev/null || die "缺少 go"
 command -v python3>/dev/null || die "缺少 python3"
 export PATH="$HOME/.local/bin:$PATH"
 [ -f "$ENVFILE" ] || die "找不到环境变量文件 $ENVFILE"
-CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/ship.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/gx_documents.go backend/gx_perms.go backend/gx_adjust.go backend/trash.go frontend/pages/ledger.vue frontend/pages/tasks.vue frontend/pages/ship.vue frontend/pages/intake.vue frontend/pages/outbound.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts frontend/composables/uiClasses.ts frontend/composables/use-server-events.ts frontend/plugins/gx-fetch.client.ts patches/patch_upstream.py"
+CUSTOM_FILES="backend/ledger_api.go backend/biz.go backend/ship.go backend/audit.go backend/idempotency.go backend/metrics.go backend/qr.go backend/template_sync.go backend/ai_recognize.go backend/ui_options.go backend/gx_config.go backend/gx_documents.go backend/gx_perms.go backend/gx_adjust.go backend/trash.go frontend/pages/ledger.vue frontend/pages/tasks.vue frontend/pages/ship.vue frontend/pages/intake.vue frontend/pages/outbound.vue frontend/pages/collection/ui-options.vue frontend/pages/collection/fields.vue frontend/composables/useOfflineQueue.ts frontend/composables/uiClasses.ts frontend/composables/use-server-events.ts frontend/components/GxThumb.vue frontend/plugins/gx-fetch.client.ts patches/patch_upstream.py"
 for f in $CUSTOM_FILES; do
   [ -f "$HOME_DIR/$f" ] || die "缺少定制文件 $HOME_DIR/$f"
 done
@@ -145,6 +145,7 @@ mkdir -p "$FE_DIR/composables"
 cp "$HOME_DIR/frontend/composables/useOfflineQueue.ts" "$FE_DIR/composables/useOfflineQueue.ts"
 cp "$HOME_DIR/frontend/composables/uiClasses.ts" "$FE_DIR/composables/uiClasses.ts"
 cp "$HOME_DIR/frontend/composables/use-server-events.ts" "$FE_DIR/composables/use-server-events.ts"
+cp "$HOME_DIR/frontend/components/GxThumb.vue" "$FE_DIR/components/GxThumb.vue"
 cp "$HOME_DIR/frontend/plugins/gx-fetch.client.ts" "$FE_DIR/plugins/gx-fetch.client.ts"
 mkdir -p "$FE_DIR/pages/collection/index"
 cp "$HOME_DIR/frontend/pages/collection/ui-options.vue" "$FE_DIR/pages/collection/index/ui-options.vue"
@@ -158,6 +159,8 @@ python3 "$HOME_DIR/patches/patch_upstream.py" "$FE_DIR" "$WORK/backend"
 # ---------------- 构建前端 ----------------
 log "构建前端 (pnpm install + build)"
 export npm_config_registry="$NPM_REGISTRY" COREPACK_ENABLE_DOWNLOAD_PROMPT=0 NODE_OPTIONS=--max-old-space-size=2048
+# 清 Nuxt 缓存：复用目录时组件/ composable 扫描结果会被缓存，新增文件不进注册表（GxThumb 教训）
+rm -rf "$FE_DIR/.nuxt" "$FE_DIR/node_modules/.cache/nuxt"
 ( cd "$FE_DIR" && pnpm install --frozen-lockfile )
 
 # Nuxt 4.2.2 app manifest 竞态修复（node_modules 内部补丁，版本升级可能失效 -> 中止）

@@ -529,3 +529,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **卡片/列表切换**（ledger 物品/盘点共用）：`viewMode`（card/list，localStorage `hb.ledger.viewmode`，默认移动=卡片、桌面=表格）。卡片视图桌面端变 2/3/4 列网格（复用移动卡片）；移动列表模式为新增紧凑行（40px 图 + 名称/徽标 + 属性行 + 小步进器，无操作列——盘点/普通都只改数量）。切换按钮：移动顶栏筛选旁 + 桌面筛选条「重置」旁（MdiFormatListBulleted/MdiViewGridOutline）。无限滚动哨兵扩展到卡片视图全端+移动列表；分页条仅桌面列表模式。
 - **Dock 移除**：移动端底部 Dock（待办/物品/进出/管理/我的）与汉堡抽屉冗余，patch 反向化——mobile-dock 改 rep_any 四变体→pristine 尾巴，mobile-dock-padding 改 rep_any 回退 pb-16。出库保存条 bottom 3.75rem+safe → bottom-0 + safe-area；出库/发货容器 padding-bottom 8rem → 2rem；ui-standard §底部留白/z-index 条款同步。
 - **结构教训**：哨兵 div 曾夹在 TransitionGroup 与表格 v-else 之间，表格 v-else 实际配对的是哨兵的 v-if（碰巧可用）——条件链必须相邻，本次已把哨兵移出链条。
+
+### 图片加载占位动画 GxThumb（16）
+- 新增共享组件 `frontend/components/GxThumb.vue`：加载中显示 muted 脉冲骨架 + 图片图标（替代 opacity-0 空白，用户不再以为没图）；`img.decode()` 完成后 300ms 淡入；加载失败显示 image-off 占位图标（不再空转脉冲）。
+- 替换点：台账卡片/紧凑列表/桌面表格缩略图、发货台拣选、出库拣选（顺带去掉了出库残留的 loading="lazy"）。ledger 的 revealImg 死代码删除。
+- **坑**：上游 nuxt.config `components: { dirs: [] }` 关闭了自动扫描——组件必须显式 `import GxThumb from "~/components/GxThumb.vue"`（生产构建把 resolveComponent 失败静默降级，页面零报错零图片，极难排查）；rebuild.sh 构建前固定清 `.nuxt` 与 `node_modules/.cache/nuxt`（复用目录的扫描缓存会让新组件/composable 不进注册表）。
