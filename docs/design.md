@@ -573,3 +573,12 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **阈值标定**（tests/test_embed_calibrate.py 实测）：同物变体（裁 15%/旋转 8°/提亮 30%）余弦 0.958~0.991，跨物品最高 0.711 → EMBED_STRONG=0.90 / EMBED_WEAK=0.80，间隔带宽阔。
 - **前端**：runAIQueue 里 embed-match 与 AI 识别并行；确认框拦截条/弱提示/并入/定位交互不变（相似度 = score×100%）；登记三入口不变（新增/并入/换封面）。pHash 时代的队列内互查移除（同图经缓存得同向量，建完即被 1.0 拦截）。
 - **验证**：引导 tests/test_embed_bootstrap.py 全量 119/119 登记成功；回归 tests/test_embed_recrop.py 鼠标裁 15% → 强拦截 97% 指向鼠标 ✓。
+
+### AI 供应商切换：火山方舟豆包 → 阿里云百炼 Qwen（20）
+- **决策**：用户改用阿里云百炼（DashScope）key。AI 识别与向量滤重两条链路整体迁移，接口路径、请求/响应形态对前端完全透明（无前端改动，仅注释更新）。
+- **识别链路**：`ai_recognize.go` 改走 OpenAI 兼容模式 `POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`，模型 `HBOX_AI_MODEL`（默认 `qwen-vl-max`）；联网搜索用 `enable_search:true`（VL 实测支持），非 200 自动降级纯识别重试；响应兼容 content 字符串/分段数组两种形态。
+- **向量链路**：`embed.go` 改走百炼原生接口 `POST .../api/v1/services/embeddings/multimodal-embedding/multimodal-embedding`，模型 `HBOX_AI_EMBED_MODEL`（默认 `qwen3-vl-embedding`，`parameters.dimension=1024` 保持维度不变；multimodal-embedding-v1 固定 1024 维不支持 dimension 参数，传参会 400，故仅 qwen 前缀模型附带）。请求体为 `input.contents:[{image:dataURL}]`，响应取 `output.embeddings[0].embedding`（旧 `data` 形态解析删除）。
+- **环境变量**：`HBOX_AI_ARK_KEY/HBOX_AI_ARK_MODEL` 废弃 → `HBOX_AI_KEY/HBOX_AI_MODEL/HBOX_AI_EMBED_MODEL`（env.example 与线上 env 同步更换，旧 key 已移除）。
+- **两个配套修正**：① 缓存键加模型 slug（`ai-<模型>-<sha>.json` / `emb-<模型>-<sha>.json`）——否则换模型后旧缓存向量/识别结果会被错误复用；② data URI 的 format 段改为魔数嗅探（png/webp/jpeg）——前端固定发 image/jpeg 头，PNG 图会被错标，百炼对格式与实际编码一致性更严格。
+- **阈值复标定**（test_embed_calibrate.py，换模型后必做）：同物变体（裁15%/旋转8°/提亮30%）余弦 0.989~0.995、原图 0.997；真实跨物品最高 0.685 → EMBED_STRONG=0.90 / EMBED_WEAK=0.80 维持不变，间隔带比豆包更宽。标定中「未识别物品」对鼠标变体 0.975 高分，排查确认该物品封面就是用户第二次实拍的鼠标照片（pHash 时代的重复数据残留），属正确命中而非误报——也实证了「拍两次鼠标」场景现在会被强拦截。
+- **验证**：全量向量引导 119/119（qwen3-vl-embedding）；recrop 回归（裁 15% → 强拦截指向鼠标）✓；/api/v1/ai/recognize 实测返回结构化 JSON ✓。

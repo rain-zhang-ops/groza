@@ -1,11 +1,11 @@
 package main
 
-// Groza 多模态向量滤重（doubao-embedding-vision，以图搜图），取代 pHash 方案。
+// Groza 多模态向量滤重（阿里云百炼 qwen3-vl-embedding，以图搜图）。
 //   POST /api/v1/gx/embed-match              body=图片字节 → {"matches":[{"itemId":"...","score":0.93}...]}
 //   POST /api/v1/gx/embed-register?item=&att= body=图片字节 → 登记该附件的向量
 //   GET  /api/v1/gx/embed-status             {"total":N,"model":"...","updatedAt":"..."}
 // 向量库：/data/biz/embeddings-<组ID>.json（base64(float32le) 按附件 ID 存，另存附件→物品映射）。
-// 向量缓存：/data/ai-cache/emb-<sha256>.json，同一张图重复计算不调模型、不计费。
+// 向量缓存：/data/ai-cache/emb-<模型>-<sha256>.json，同一张图重复计算不调模型、不计费；换模型缓存自动失效。
 
 import (
 	"bytes"
@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 )
 
-const embedEndpoint = "https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal"
+const embedEndpoint = "https://dashscope.aliyuncs.com/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
 const embedDims = 1024
 
 type embedLib struct {
@@ -42,7 +43,7 @@ func embedModel() string {
 	if m := os.Getenv("HBOX_AI_EMBED_MODEL"); m != "" {
 		return m
 	}
-	return "doubao-embedding-vision-251215"
+	return "qwen3-vl-embedding"
 }
 
 func embedPathFor(gid string) string { return bizDir + "/embeddings-" + gid + ".json" }
@@ -65,27 +66,31 @@ func embedLoad(gid string) *embedLib {
 	return &lib
 }
 
-// embedCompute 计算图片向量（带内容哈希缓存）
+// embedCompute 计算图片向量（带内容哈希+模型缓存）
 func embedCompute(body []byte) ([]float32, error) {
 	sum := sha256.Sum256(body)
-	cachePath := "/data/ai-cache/emb-" + hex.EncodeToString(sum[:]) + ".json"
+	model := embedModel()
+	cachePath := "/data/ai-cache/emb-" + aiSlug(model) + "-" + hex.EncodeToString(sum[:]) + ".json"
 	if b, err := os.ReadFile(cachePath); err == nil {
 		var v []float32
 		if json.Unmarshal(b, &v) == nil && len(v) > 0 {
 			return v, nil
 		}
 	}
-	key := os.Getenv("HBOX_AI_ARK_KEY")
+	key := aiKey()
 	if key == "" {
 		return nil, errEmbedNoKey
 	}
-	dataURL := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(body)
-	reqBody, _ := json.Marshal(map[string]any{
-		"model":           embedModel(),
-		"encoding_format": "float",
-		"dimensions":      embedDims,
-		"input":           []any{map[string]any{"type": "image_url", "image_url": map[string]string{"url": dataURL}}},
-	})
+	dataURL := "data:" + imageMime(body) + ";base64," + base64.StdEncoding.EncodeToString(body)
+	m := map[string]any{
+		"model": model,
+		"input": map[string]any{"contents": []any{map[string]string{"image": dataURL}}},
+	}
+	if strings.HasPrefix(model, "qwen") {
+		// qwen 系支持 dimension；multimodal-embedding-v1 固定 1024 维，传参会 400
+		m["parameters"] = map[string]any{"dimension": embedDims}
+	}
+	reqBody, _ := json.Marshal(m)
 	req, err := http.NewRequest("POST", embedEndpoint, bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, err
@@ -101,7 +106,7 @@ func embedCompute(body []byte) ([]float32, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, &embedAPIError{status: resp.StatusCode, body: string(rb)}
 	}
-	vec := parseEmbedding(rb)
+	vec := parseEmbeddingDash(rb)
 	if len(vec) == 0 {
 		return nil, &embedAPIError{status: resp.StatusCode, body: "no embedding: " + string(rb[:min(300, len(rb))])}
 	}
@@ -112,30 +117,22 @@ func embedCompute(body []byte) ([]float32, error) {
 	return vec, nil
 }
 
-// parseEmbedding 兼容 data 为对象或数组两种返回形态
-func parseEmbedding(rb []byte) []float32 {
+// parseEmbeddingDash 解析百炼原生多模态向量响应（output.embeddings[0].embedding）
+func parseEmbeddingDash(rb []byte) []float32 {
 	var root struct {
-		Data json.RawMessage `json:"data"`
+		Output struct {
+			Embeddings []struct {
+				Embedding []float32 `json:"embedding"`
+			} `json:"embeddings"`
+		} `json:"output"`
 	}
-	if json.Unmarshal(rb, &root) != nil || len(root.Data) == 0 {
+	if json.Unmarshal(rb, &root) != nil || len(root.Output.Embeddings) == 0 {
 		return nil
 	}
-	var arr []struct {
-		Embedding []float32 `json:"embedding"`
-	}
-	if json.Unmarshal(root.Data, &arr) == nil && len(arr) > 0 && len(arr[0].Embedding) > 0 {
-		return arr[0].Embedding
-	}
-	var obj struct {
-		Embedding []float32 `json:"embedding"`
-	}
-	if json.Unmarshal(root.Data, &obj) == nil && len(obj.Embedding) > 0 {
-		return obj.Embedding
-	}
-	return nil
+	return root.Output.Embeddings[0].Embedding
 }
 
-var errEmbedNoKey = &embedAPIError{status: 503, body: "AI 未配置（缺少 HBOX_AI_ARK_KEY）"}
+var errEmbedNoKey = &embedAPIError{status: 503, body: "AI 未配置（缺少 HBOX_AI_KEY）"}
 
 type embedAPIError struct {
 	status int

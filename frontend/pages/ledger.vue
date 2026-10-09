@@ -531,8 +531,8 @@
   const AI_SIZES = ["A4", "A5", "A5S", "A6", "A6L", "B5", "B6", "Micro", "Skinny", "Classic", "Mini"];
   const AI_SPECS = ["横线", "网格", "方格", "点阵", "Notes笔记本", "无日期计划本", "有日期计划本"];
   const AI_MATERIALS = ["纸", "塑料", "金属", "布", "PU"];
-  // ---------- Embedding 以图搜图滤重（doubao-embedding-vision，服务端计算+存储，全设备共享） ----------
-  const EMBED_STRONG = 0.9; // 余弦相似度 ≥0.90：强命中，拦截新增（实测同物变体 ≥0.95，跨物品 ≤0.71）
+  // ---------- Embedding 以图搜图滤重（qwen3-vl-embedding，服务端计算+存储，全设备共享） ----------
+  const EMBED_STRONG = 0.9; // 余弦相似度 ≥0.90：强命中，拦截新增（阈值随模型更换后重新标定，见 docs/design.md）
   const EMBED_WEAK = 0.8; // 0.80~0.90：弱提示
   const aiMatches = new Map<string, Array<{ itemId: string; score: number }>>(); // 任务 id -> 向量匹配结果
   function rowById(id: string): Row | undefined { return rows.value.find(r => r.id === id); }
