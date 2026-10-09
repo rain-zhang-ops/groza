@@ -483,20 +483,31 @@ def main():
             open(p, "w", encoding="utf-8").write(s.replace(anchor, add, 1))
             done("routes-ledger 注入 /ledger /ledger/{id} /trash2 /ui-options /ai/recognize /trash")
 
-    # ---- 6b. 后端路由：图片指纹库（锚点为 routes-ledger 注入的 restore 行，新旧源码树均适用）----
+    # ---- 6b. 后端路由：embedding 以图搜图滤重（取代已废弃的 routes-phash）----
     s = open(p, encoding="utf-8").read()
-    if "/gx/phashes" in s:
-        skip("routes-phash")
+    changed = False
+    for dead in ('\n\t\tr.Get("/gx/phashes", chain.ToHandlerFunc(a.handlePhashesGet(), userMW...))',
+                 '\n\t\tr.Put("/gx/phashes", chain.ToHandlerFunc(a.handlePhashesPut(), userMW...))'):
+        if dead in s:
+            s = s.replace(dead, "")
+            changed = True
+    if "/gx/embed-match" in s:
+        if changed:
+            open(p, "w", encoding="utf-8").write(s)
+            done("routes-embed 清理废弃 phash 路由")
+        else:
+            skip("routes-embed")
     else:
         anchor = '\t\tr.Post("/gx/config/restore", chain.ToHandlerFunc(a.handleGxConfigRestore(), userMW...))'
         add = anchor + ("\n"
-                        '\t\tr.Get("/gx/phashes", chain.ToHandlerFunc(a.handlePhashesGet(), userMW...))\n'
-                        '\t\tr.Put("/gx/phashes", chain.ToHandlerFunc(a.handlePhashesPut(), userMW...))')
+                        '\t\tr.Post("/gx/embed-match", chain.ToHandlerFunc(a.handleEmbedMatch(), userMW...))\n'
+                        '\t\tr.Post("/gx/embed-register", chain.ToHandlerFunc(a.handleEmbedRegister(), userMW...))\n'
+                        '\t\tr.Get("/gx/embed-status", chain.ToHandlerFunc(a.handleEmbedStatus(), userMW...))')
         if anchor not in s:
-            fail("routes-phash", "gx/config/restore 锚点未找到")
+            fail("routes-embed", "gx/config/restore 锚点未找到")
         else:
             open(p, "w", encoding="utf-8").write(s.replace(anchor, add, 1))
-            done("routes-phash 注入 /gx/phashes")
+            done("routes-embed 注入 /gx/embed-match /gx/embed-register /gx/embed-status")
 
     # ---- 7. 集合页「选项配置」tab ----
     coll = f"{fe}/pages/collection/index.vue"

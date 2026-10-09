@@ -565,3 +565,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **方案**：每张图算 3 段指纹（全图 + 中心 80% + 中心 60%，共 48 hex），比对取两两最小距离。实测：裁 25% 距离 0、裁 10% 10、提亮 2、旋转 8° 14（弱提示），误报对照（鼠标 vs 鼠标垫）保持 26 安全距离。旋转 20°+ 仍漏（预期，拦截定位是提醒而非裁决）。
 - **兼容**：phashHamming 分段处理——等长多段取最小，新旧（16/48）混比只比全图段；后端校验放行 16/48 位 hex。localStorage 键升级 hb.phash.v2，服务端旧库清空后由引导脚本全量重建（119 张）。
 - **验证**：tests/test_phash_sensitivity.py（单段灵敏度基线）、tests/test_phash_multiscale.py（多尺度召回+误报对照）、tests/test_phash_recrop.py（真实链路回归：鼠标主图裁 15% 走 AI 新增 → 强拦截 88% 指向鼠标，拒绝不留副作用）。
+
+### 滤重方案替换：Embedding 以图搜图（19，取代 17 的 pHash 方案）
+- **决策**：pHash（含多尺度 v2）对真实重拍的取景差异召回不足，用户拍板改用 doubao-embedding-vision 多模态向量。pHash 代码全量移除（usePhash.ts / backend/phash.go / routes-phash 补丁块，补丁会自动清理已注入的旧路由）。
+- **架构**（向量全程服务端，前端零计算零存储）：新增 `backend/embed.go`——`POST /gx/embed-match`（图片字节→向量→对全库余弦→Top5 {itemId,score}）、`POST /gx/embed-register?item=&att=`（登记向量，按附件 ID 存）、`GET /gx/embed-status`。向量库 `/data/biz/embeddings-<gid>.json`（base64 float32le，1024 维约 5.5KB/张）；向量按内容 sha256 缓存（`/data/ai-cache/emb-*.json`），同图重复算不调模型不计费；模型更换自动视为空库。
+- **模型坑**：账号只开通了 `doubao-embedding-vision-251215`（250615/250328/241215 均 404 NotFound）；可用 `GET /api/v3/models` 查目录，status=None 才是已开通（Retiring 不可用）。默认模型可用 HBOX_AI_EMBED_MODEL 覆盖。
+- **阈值标定**（tests/test_embed_calibrate.py 实测）：同物变体（裁 15%/旋转 8°/提亮 30%）余弦 0.958~0.991，跨物品最高 0.711 → EMBED_STRONG=0.90 / EMBED_WEAK=0.80，间隔带宽阔。
+- **前端**：runAIQueue 里 embed-match 与 AI 识别并行；确认框拦截条/弱提示/并入/定位交互不变（相似度 = score×100%）；登记三入口不变（新增/并入/换封面）。pHash 时代的队列内互查移除（同图经缓存得同向量，建完即被 1.0 拦截）。
+- **验证**：引导 tests/test_embed_bootstrap.py 全量 119/119 登记成功；回归 tests/test_embed_recrop.py 鼠标裁 15% → 强拦截 97% 指向鼠标 ✓。
