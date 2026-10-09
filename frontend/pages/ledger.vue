@@ -534,7 +534,7 @@
   // ---------- 图片指纹滤重（pHash，仅第一层：近似重复检测） ----------
   const PHASH_STRONG = 8; // 汉明距离 ≤8：强命中，拦截新增
   const PHASH_WEAK = 14; // 9~14：弱提示
-  const PHASH_KEY = "hb.phash.v1";
+  const PHASH_KEY = "hb.phash.v2"; // v2：多尺度三段指纹（v1 单段作废）
   const aiHashes = new Map<string, string>(); // 任务 id -> 照片指纹
   const phashStore = reactive<{ h: Record<string, string>; o: Record<string, string> }>({ h: {}, o: {} });
   try { Object.assign(phashStore, JSON.parse(localStorage.getItem(PHASH_KEY) || "{}")); } catch (_e) { /* ignore */ }

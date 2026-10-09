@@ -37,7 +37,7 @@ def login(page):
 
 
 def local_count(page):
-    raw = page.evaluate("() => localStorage.getItem('hb.phash.v1') || '{}'")
+    raw = page.evaluate("() => localStorage.getItem('hb.phash.v2') || '{}'")
     try:
         return len(json.loads(raw).get("h", {}))
     except Exception:

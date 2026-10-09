@@ -28,7 +28,7 @@ var phashMu sync.Mutex
 func phashPathFor(gid string) string { return bizDir + "/phashes-" + gid + ".json" }
 
 func phashValidHex(s string) bool {
-	if len(s) != 16 {
+	if len(s) != 16 && len(s) != 48 {
 		return false
 	}
 	for _, c := range s {
