@@ -524,3 +524,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **桌面表格**：盘点时隐藏多选列、操作列、实盘/差异列；名称/库位/品牌/规格/价格/安全库存等编辑器全部 disabled，仅数量可编辑。
 - **删除机制**：盘点差异报告弹窗、submitCount/confirmCount/diff 系列函数、Row.count 字段；gx/adjust 后端接口保留（暂无 UI 入口）。
 - 保留：h1/title 动态「盘点」、amber 提示横幅（文案改「只保留数量修改，即改即存；其余编辑已锁定」）、URL 唯一来源（12 的机制不变）。
+
+### 卡片/列表切换 + 移动端 Dock 移除（15）
+- **卡片/列表切换**（ledger 物品/盘点共用）：`viewMode`（card/list，localStorage `hb.ledger.viewmode`，默认移动=卡片、桌面=表格）。卡片视图桌面端变 2/3/4 列网格（复用移动卡片）；移动列表模式为新增紧凑行（40px 图 + 名称/徽标 + 属性行 + 小步进器，无操作列——盘点/普通都只改数量）。切换按钮：移动顶栏筛选旁 + 桌面筛选条「重置」旁（MdiFormatListBulleted/MdiViewGridOutline）。无限滚动哨兵扩展到卡片视图全端+移动列表；分页条仅桌面列表模式。
+- **Dock 移除**：移动端底部 Dock（待办/物品/进出/管理/我的）与汉堡抽屉冗余，patch 反向化——mobile-dock 改 rep_any 四变体→pristine 尾巴，mobile-dock-padding 改 rep_any 回退 pb-16。出库保存条 bottom 3.75rem+safe → bottom-0 + safe-area；出库/发货容器 padding-bottom 8rem → 2rem；ui-standard §底部留白/z-index 条款同步。
+- **结构教训**：哨兵 div 曾夹在 TransitionGroup 与表格 v-else 之间，表格 v-else 实际配对的是哨兵的 v-if（碰巧可用）——条件链必须相邻，本次已把哨兵移出链条。

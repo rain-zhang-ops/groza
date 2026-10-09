@@ -182,7 +182,7 @@
 
 <template>
   <div class="min-h-[70vh] bg-background text-foreground">
-    <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(8rem + env(safe-area-inset-bottom))">
+    <div class="mx-auto max-w-5xl p-4 md:p-8" style="padding-bottom: calc(2rem + env(safe-area-inset-bottom))">
       <header class="mb-6 flex flex-wrap items-center gap-2">
         <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">发货</h1>
         <span v-if="counts.pending" class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">待发 {{ counts.pending }}</span>

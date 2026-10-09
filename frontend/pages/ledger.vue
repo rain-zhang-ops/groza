@@ -28,6 +28,8 @@
   import MdiImageMultiple from "~icons/mdi/image-multiple";
   import MdiImage from "~icons/mdi/image";
   import MdiFormatSize from "~icons/mdi/format-size";
+  import MdiViewGridOutline from "~icons/mdi/view-grid-outline";
+  import MdiFormatListBulleted from "~icons/mdi/format-list-bulleted";
   import MdiContentPaste from "~icons/mdi/content-paste";
   import MdiFormTextbox from "~icons/mdi/form-textbox";
   import MdiDotsHorizontal from "~icons/mdi/dots-horizontal";
@@ -72,6 +74,9 @@
   const route = useRoute();
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 768px)");
+  // 卡片/列表切换：卡片=大图块（移动默认）；列表=桌面表格 / 移动紧凑行
+  const viewMode = ref<"card" | "list">("card");
+  watch(viewMode, v => { try { localStorage.setItem("hb.ledger.viewmode", v); } catch (_e) { /* ignore */ } });
   const { openDialog } = useDialog();
   const TPL_ID = "3873384e-3c86-4466-b3fd-42bbc4abd6e2";
   const TYPE_ID = "d5047042-cf61-42e9-bce3-29757ad2e6a9";
@@ -1162,6 +1167,8 @@
     document.addEventListener("visibilitychange", onWSVisChange);
     try { bigFont.value = localStorage.getItem("groza.bigfont") === "1"; applyBigFont(); } catch (_e) { /* ignore */ }
     const savedCols = localStorage.getItem("hb.ledger.cols");
+    const savedVm = localStorage.getItem("hb.ledger.viewmode");
+    viewMode.value = (savedVm === "card" || savedVm === "list") ? savedVm : (isMobile.value ? "card" : "list");
     if (savedCols) { try { Object.assign(cols, JSON.parse(savedCols)); } catch (_e) { /* ignore */ } }
     const savedPresets = localStorage.getItem("hb.ledger.presets");
     if (savedPresets) { try { presets.value = JSON.parse(savedPresets); } catch (_e) { /* ignore */ } }
@@ -2074,6 +2081,7 @@
           <label :class="[chip, 'active:scale-95']"><input v-model="showSummary" type="checkbox" class="accent-primary" /> 汇总</label>
           <button :class="[btnGhost, 'active:scale-95']" @click="moreFilters = !moreFilters"><MdiFilterVariant class="h-4 w-4" /> 更多<span class="transition-transform" :class="moreFilters ? 'rotate-180' : ''">▾</span></button>
           <div class="ml-auto flex items-center gap-2">
+            <button :class="[btnGhost, 'active:scale-95']" :title="viewMode === 'card' ? '切换到列表' : '切换到卡片'" @click="viewMode = viewMode === 'card' ? 'list' : 'card'"><MdiFormatListBulleted v-if="viewMode === 'card'" class="h-4 w-4" /><MdiViewGridOutline v-else class="h-4 w-4" /></button>
             <button :class="[btnGhost, 'active:scale-95']" @click="Object.assign(filter, { brand: '', size: '', spec: '', color: '', material: '', q: '' }); dataFilter = ''">重置</button>
             <details class="relative">
               <summary :class="[btnGhost, 'list-none active:scale-95']">列 ▾</summary>
@@ -2141,6 +2149,11 @@
         ><MdiFilterVariant class="h-5 w-5" /> 筛选
           <span v-if="activeFilterCount" class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-xs font-semibold tabular-nums text-primary-foreground">{{ activeFilterCount }}</span>
         </button>
+        <button
+          class="grid h-10 w-10 shrink-0 place-items-center rounded-full border bg-background transition active:scale-95"
+          :title="viewMode === 'card' ? '切换到列表' : '切换到卡片'"
+          @click="viewMode = viewMode === 'card' ? 'list' : 'card'"
+        ><MdiFormatListBulleted v-if="viewMode === 'card'" class="h-5 w-5" /><MdiViewGridOutline v-else class="h-5 w-5" /></button>
         <button
           class="inline-flex h-10 shrink-0 items-center rounded-full border px-3.5 text-sm font-medium transition-all active:scale-95"
           :class="onlyLow ? 'border-amber-400 bg-amber-500/15 text-amber-600' : 'bg-background'"
@@ -2222,8 +2235,8 @@
       </div>
       <div v-else-if="err" :class="errorCls">{{ err }}</div>
 
-      <!-- 手机卡片 -->
-      <TransitionGroup v-else-if="isMobile" name="card" tag="div" class="space-y-2.5">
+      <!-- 卡片视图（移动单列 / 桌面网格） -->
+      <TransitionGroup v-else-if="viewMode === 'card'" name="card" tag="div" :class="isMobile ? 'space-y-2.5' : 'grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4'">
         <div v-for="r in shownList" :key="r.id" class="relative overflow-hidden rounded-2xl border bg-card">
           <div v-show="(swipe[r.id] || 0) < 0" class="absolute inset-y-0 right-0 flex items-center gap-2 bg-primary/5 px-2.5">
             <button class="grid h-12 w-12 place-items-center rounded-xl bg-primary text-primary-foreground transition active:scale-90" @click="step(r,-1); closeSwipe(r)"><MdiMinus class="h-5 w-5" /></button>
@@ -2295,10 +2308,31 @@
         </div>
       </TransitionGroup>
 
-      <!-- 移动端：无限滚动哨兵 / 到底提示 -->
-      <div v-if="isMobile && sorted.length" class="py-3 text-center text-xs tabular-nums text-muted-foreground">
-        <span v-if="shownList.length < sorted.length" ref="loadMoreEl">下拉加载更多（{{ shownList.length }}/{{ sorted.length }}）</span>
-        <span v-else>共 {{ sorted.length }} 条 · 到底了</span>
+      <!-- 手机紧凑列表（列表模式） -->
+      <div v-else-if="isMobile" class="divide-y overflow-hidden rounded-xl border bg-card">
+        <div
+          v-for="r in shownList" :key="r.id"
+          class="flex items-center gap-2.5 px-3 py-2"
+          :class="[isTrashed(r) || isSoldOut(r) ? 'opacity-60' : '', !isTrashed(r) && !isSoldOut(r) && isLow(r) ? 'border-l-2 border-l-amber-400' : '']"
+        >
+          <img v-if="r.thumb" :src="imgUrl(r)" decoding="async" width="40" height="40" class="h-10 w-10 shrink-0 cursor-zoom-in rounded-lg border object-cover opacity-0 transition" @load="revealImg" @click="preview = imgUrl(r)" />
+          <span v-else class="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-dashed bg-muted/60 text-[10px] text-muted-foreground">无图</span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5">
+              <NuxtLink :to="`/item/${r.id}`" class="truncate text-sm font-medium text-foreground"><span v-html="hl(r.name)"></span></NuxtLink>
+              <span v-if="isTrashed(r)" class="shrink-0 rounded-full bg-destructive/15 px-2 py-0.5 text-[10px] font-medium text-destructive">待删除</span>
+              <span v-else-if="isLow(r)" class="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-600">待补货</span>
+              <span v-else-if="isSoldOut(r)" class="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">售罄</span>
+            </div>
+            <div class="truncate text-xs text-muted-foreground">{{ [r.brand, r.size, r.spec].filter(Boolean).join(" · ") }}<template v-if="r.serial"> · 库位 {{ r.serial }}</template></div>
+          </div>
+          <div class="flex shrink-0 items-center overflow-hidden rounded-lg border">
+            <button class="grid h-9 w-9 place-items-center text-lg transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
+            <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-9 w-12 border-x bg-background text-center text-sm font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+            <button class="grid h-9 w-9 place-items-center text-lg transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
+          </div>
+        </div>
+        <div v-if="!sorted.length" :class="emptyCls">没有匹配的物品</div>
       </div>
 
       <!-- 桌面表格 -->
@@ -2399,8 +2433,14 @@
         </div>
       </div>
 
-      <!-- 分页（桌面；移动端用无限滚动） -->
-      <div v-if="sorted.length" class="mt-4 hidden flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm md:flex">
+      <!-- 无限滚动哨兵 / 到底提示（卡片视图全端 + 移动列表；桌面表格用分页） -->
+      <div v-if="(viewMode === 'card' || isMobile) && sorted.length" class="py-3 text-center text-xs tabular-nums text-muted-foreground">
+        <span v-if="shownList.length < sorted.length" ref="loadMoreEl">下拉加载更多（{{ shownList.length }}/{{ sorted.length }}）</span>
+        <span v-else>共 {{ sorted.length }} 条 · 到底了</span>
+      </div>
+
+      <!-- 分页（桌面表格；其余视图用无限滚动） -->
+      <div v-if="sorted.length && viewMode === 'list'" class="mt-4 hidden flex-wrap items-center justify-center gap-2 rounded-xl border bg-card p-2 text-sm md:flex">
         <select v-model.number="pageSize" class="hidden rounded-lg border bg-background px-2 py-1.5 text-sm md:block" @change="gotoPage(1)">
           <option :value="20">20/页</option>
           <option :value="50">50/页</option>

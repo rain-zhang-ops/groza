@@ -887,11 +887,13 @@ def main():
         'navigateTo(redirectTo.value || "/tasks");',
         "landing-redirect-to-tasks")
 
-    # ---- 9b. 移动端底部 Dock（lg 以下显示；抽屉仍保留）----
-    rep(dv,
+    # ---- 9b. 移动端底部 Dock：已移除（与汉堡抽屉菜单功能冗余）----
+    # 历史版本曾注入 Dock；这里做反向补丁：无论目录里是 pristine 还是任何历史 Dock 变体，统一恢复为 pristine。
+    rep_any(dv,
+        ['<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center pb-16 lg:pb-0">',
+         '<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center">'],
         '<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center">',
-        '<SidebarInset class="min-h-dvh max-w-full overflow-hidden bg-background-accent">\n        <div class="relative flex h-full flex-col justify-center pb-16 lg:pb-0">',
-        "mobile-dock-padding")
+        "mobile-dock-padding-remove")
     dock_old = '        </div>\n      </SidebarInset>'
     dock_v1 = (
         '        </div>\n'
@@ -942,7 +944,7 @@ def main():
         + dock_item("/profile", "route.path === '/profile'", "MdiAccount", "我的")
         + dock_tail
     )
-    rep_any(dv, [dock_new, dock_prev, dock_v2, dock_v1, dock_old], dock_new, "mobile-dock")
+    rep_any(dv, [dock_new, dock_prev, dock_v2, dock_v1], dock_old, "mobile-dock-remove", "Dock 移除（导航统一走汉堡抽屉）")
 
     # ---- 9c. ⌘K 命令面板（Claude 式统一入口）----
     qm = f"{fe}/components/App/QuickMenuModal.vue"

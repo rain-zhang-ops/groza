@@ -51,7 +51,7 @@
 ```
 
 - **容器**：统一 `max-w-5xl p-4 md:p-8`；仅数据密集页（台账）允许例外：`max-w-[1700px] p-3 md:p-6`。
-- **padding-bottom**：标准页 `calc(2rem + env(safe-area-inset-bottom))`；有常驻底部保存条的页（出库）用 `calc(8rem + env(...))`（保存条抬高到 Dock 上方后占至约 7.75rem）；台账 `calc(1rem + env(...))`（有父级 pb-16 补偿）。
+- **padding-bottom**：标准页 `calc(2rem + env(safe-area-inset-bottom))`（移动端 Dock 已移除，无抬高需求）；台账 `calc(1rem + env(...))`。
 - **页头**：`mb-6`；h1 前不加装饰图标块。页头按钮顺序：主流程入口（primary）在最右，互跳链接（border）在左；每屏主按钮至多 1 个。
 - **互跳集合**：进出/记录/单据页头部固定含「入库 · 出库 · 单据 · 台账」。
 
@@ -91,7 +91,7 @@ const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-
 | 确认类（删除/回滚/AI 结果确认） | 居中弹窗 | `bg-black/50`，卡 `w-full max-w-md rounded-2xl bg-card p-4 shadow-xl` |
 | 扫码/图片预览 | 全屏 | `bg-black/80` |
 
-- z-index 规范：内容浮层一律 `z-50`；常驻 chrome（Dock/FAB/底部保存条/移动筛选 sheet）`z-40`。
+- z-index 规范：内容浮层一律 `z-50`；常驻 chrome（底部保存条/移动筛选 sheet）`z-40`。
 - 新建弹层从右侧抽屉开始想，禁止新增居中表单弹窗。
 
 ## 6. 状态标准
@@ -105,7 +105,7 @@ const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-
 ## 7. 移动端标准
 
 - 触控目标 ≥ 40px（计数器/步进按钮 `h-11 w-11` 是标杆）。
-- 固定底部元素（Dock/FAB/保存条）必须 `padding-bottom: env(safe-area-inset-bottom)`；FAB 固定 `bottom-20 right-4`（Dock 上方）。
+- 固定底部元素（保存条）必须 `padding-bottom: env(safe-area-inset-bottom)`。
 - 手机卡片 + 桌面表格双形态（台账模式）；下拉刷新仅限台账。
 - 顶部 AppBar：ghost 汉堡 + 衬线字标 + outline 图标按钮；禁止 `bg-primary` 黑块图标。
 
