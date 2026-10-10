@@ -385,6 +385,7 @@ def main():
             "delete_account": "删除账户",
             "delete_account_sub": "删除您的账户及其所有相关数据。此操作无法撤销。",
             "api_keys_sub": "用于程序化访问的静态令牌，每个密钥都拥有与您账户相同的权限。",
+            "user_profile_sub": "账号信息、登录密码与安全。",
             "notifiers": "通知",
             "notifiers_sub": "接收库存事件的提醒通知。",
             "no_notifiers": "尚未配置通知。",
@@ -400,6 +401,7 @@ def main():
             },
         },
         "items": {
+            "duplicate": {"title": "复制偏好"},
             "asset_id": "资产编号",
             "associated_with_multiple": "此资产编号与多个物品相关联",
             "invalid_asset_id": "无效的资产编号",
@@ -888,6 +890,11 @@ def main():
     rep(f"{fe}/pages/collection/index/notifiers.vue",
         '  import MdiMegaphone from "~icons/mdi/megaphone";\n', "",
         "notifiers-megaphone-rm")
+    # 标签页：平列表没有树，去掉 展开/收起 按钮组（图标无文字、不可用）
+    rep(f"{fe}/pages/tags.vue",
+        '      <div>\n        <TooltipProvider :delay-duration="0">\n          <ButtonGroup>\n            <Tooltip>\n              <TooltipTrigger>\n                <Button size="icon" variant="outline" data-pos="start" @click="openAll">\n                  <MdiExpandAllOutline />\n                </Button>\n              </TooltipTrigger>\n              <TooltipContent>\n                <p>{{ $t("locations.expand_tree") }}</p>\n              </TooltipContent>\n            </Tooltip>\n            <Tooltip>\n              <TooltipTrigger>\n                <Button size="icon" variant="outline" data-pos="end" @click="closeAll">\n                  <MdiCollapseAllOutline />\n                </Button>\n              </TooltipTrigger>\n              <TooltipContent>\n                <p>{{ $t("locations.collapse_tree") }}</p>\n              </TooltipContent>\n            </Tooltip>\n          </ButtonGroup>\n        </TooltipProvider>\n      </div>\n',
+        "",
+        "tags-treebtns-rm")
 
     # ---- 7e. 侧栏再收敛：成员/邀请/通知/设置/工具 收进 /profile「系统管理」卡 ----
     # nav_body 源已删（pristine 路径）；以下为已补丁态迁移（nav-restructure 幂等跳过时生效）
@@ -1401,15 +1408,20 @@ def main():
         '              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </BaseCard>',
         '              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </details>',
         "profile-changes-collapse-end")
-    # 删除账户 → 折叠（红色警示行）
-    rep(pp,
-        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />\n            <span> {{ $t("profile.delete_account") }} </span>\n            <template #description> {{ $t("profile.delete_account_sub") }} </template>\n          </BaseSectionHeader>\n        </template>',
-        '      <details class="group rounded-xl border border-destructive/40 bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-destructive [&::-webkit-details-marker]:hidden">\n          {{ $t("profile.delete_account") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">不可撤销</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>\n        <p class="px-4 pb-1 pt-2 text-xs font-normal text-muted-foreground">{{ $t("profile.delete_account_sub") }}</p>',
-        "profile-delete-collapse")
-    rep(pp,
-        '          <Button size="sm" variant="destructive" @click="deleteProfile">\n            {{ $t("profile.delete_account") }}\n          </Button>\n        </div>\n      </BaseCard>',
-        '          <Button size="sm" variant="destructive" @click="deleteProfile">\n            {{ $t("profile.delete_account") }}\n          </Button>\n        </div>\n      </details>',
-        "profile-delete-collapse-end")
+    # 删除账户卡整个移除（高危操作，单用户场景无价值；如确需删库走运维通道）
+    s = open(pp, encoding="utf-8").read()
+    del_forms = [
+        # 折叠态（曾被 7f 折叠过的历史形态）
+        '\n\n      <details class="group rounded-xl border border-destructive/40 bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-destructive [&::-webkit-details-marker]:hidden">\n          {{ $t("profile.delete_account") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">不可撤销</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>\n        <p class="px-4 pb-1 pt-2 text-xs font-normal text-muted-foreground">{{ $t("profile.delete_account_sub") }}</p>\n        <div class="border-t-2 p-4 px-6">\n          <Button size="sm" variant="destructive" @click="deleteProfile">\n            {{ $t("profile.delete_account") }}\n          </Button>\n        </div>\n      </details>',
+        # 上游 BaseCard 形态
+        '\n\n      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />\n            <span> {{ $t("profile.delete_account") }} </span>\n            <template #description> {{ $t("profile.delete_account_sub") }} </template>\n          </BaseSectionHeader>\n        </template>\n        <div class="border-t-2 p-4 px-6">\n          <Button size="sm" variant="destructive" @click="deleteProfile">\n            {{ $t("profile.delete_account") }}\n          </Button>\n        </div>\n      </BaseCard>',
+    ]
+    del_hit = next((f for f in del_forms if f in s), None)
+    if del_hit is None:
+        skip("profile-delete-rm", "已移除或不存在")
+    else:
+        open(pp, "w", encoding="utf-8").write(s.replace(del_hit, "", 1))
+        done("profile-delete-rm 移除删除账户卡")
     # 折叠后不再用的图标 import
     rep(pp, '  import MdiKeyVariant from "~icons/mdi/key-variant";\n', "", "profile-icon-rm-keyvariant")
     rep(pp, '  import MdiFill from "~icons/mdi/fill";\n', "", "profile-icon-rm-fill")

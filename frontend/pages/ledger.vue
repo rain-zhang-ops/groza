@@ -2458,7 +2458,7 @@
                 <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
               </div>
               <template v-if="!countMode">
-                <button v-if="!safetyEditing[r.id]" class="ml-auto px-2 py-2 text-xs text-muted-foreground transition active:scale-95" @click="editSafety(r)">安全 {{ r.safety ?? "＋" }}</button>
+                <button v-if="!safetyEditing[r.id]" class="ml-auto px-2 py-2 text-xs text-muted-foreground transition active:scale-95" @click="editSafety(r)">安全 {{ r.safety ? r.safety : "＋" }}</button>
                 <input v-else v-model.number="r.safety" inputmode="numeric" type="number" min="0" class="ml-auto h-11 w-16 rounded-xl border bg-background text-center text-base tabular-nums outline-none focus:ring-2 focus:ring-ring/40" :ref="focusEl" @blur="doneSafetyEdit(r)" @keyup.enter="($event.target as HTMLInputElement).blur()" />
               </template>
             </div>

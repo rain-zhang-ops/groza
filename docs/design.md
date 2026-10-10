@@ -691,3 +691,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **改法**（patch 7f 块）：① 补 h1「我的」（集合页之外唯一缺页头的页）；② 系统管理卡置顶到用户资料卡之后（profile-hub-top 搬移块，幂等按相对位置判断）；③ API 密钥/偏好(原主题设置)/最近变更/删除账户 4 张卡 → details 默认折叠，summary 带当前值预览（N 个密钥 / 跟随系统·大字号 / N 条 / 不可撤销），删除账户卡红色描边警示；④ 清理 MdiKeyVariant/MdiFill 失效 import。
 - **补丁顺序教训（重要）**：7f 依赖 profile-audit-card（注入最近变更卡）与 profile-theme-toggles-ui（注入外观开关）的产物，必须排在它们**之后**执行；profile-audit-card 需加「最近变更」文本守卫才幂等（折叠态替换后旧锚点消失）。另修复 quickmenu-groza 锚点腐烂：v0.26.2 pristine 的 quickMenuActions 是 nav.map 形态，补丁 old 写成历史 flatMap 形态——复用已补丁态时该补丁永远 SKIP 不可见，FRESH=1 才暴露。改 rep_any 双形态覆盖。**教训：动过注入顺序/形态的补丁，必须跑一次 FRESH=1 验证 pristine 路径。**
 - **验证**：FRESH=1 全量重建零 FAIL；verify_menu2.py 增补：h1=我的、用户资料<系统管理<API 顺序、4 折叠卡默认收起、偏好展开见外观开关。
+
+### 逐页细节打磨（35）
+- **/profile 删「删除账户」卡**：高危不可撤销按钮，单用户场景无价值，整张卡移除（patch profile-delete-rm 覆盖 BaseCard/折叠双形态；script 里 deleteProfile 成死函数，无害保留）。「用户资料」卡描述从「邀请用户共同管理您的资产」改为「账号信息、登录密码与安全。」；「复制设置」按钮改名「复制偏好」（items.duplicate.title）。
+- **/tags**：平列表没有树，去掉 展开/收起 两个无文字图标按钮（tags-treebtns-rm）。
+- **/tasks**：开关「隐藏 0 项」→「隐藏空类」（原文案歧义：0 项读作数量）。
+- **/ledger**：安全库存为 0（未设）时行内 chip 显示「安全 ＋」而非「安全 0」（0 是未设置，不是数值）。
+- **验证**：verify_polish.py 双端 8 断言（profile 无删除账户/新文案、tasks 开关、tags 无 data-pos 按钮、ledger 无「安全 0」）。
+- **验证脚本教训**：`main button` 会命中布局顶栏的 搜索/扫码 按钮——页面断言要用特征属性（如 data-pos）或内容容器范围。
