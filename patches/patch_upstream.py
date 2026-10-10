@@ -822,6 +822,73 @@ def main():
     else:
         skip("nav-hide-templates")
 
+    # ---- 7d. 系统组页面打磨：工具页折叠分区、DetailAction 紧凑化、集合页去重复标题 ----
+    tp = f"{fe}/pages/collection/index/tools.vue"
+    s = open(tp, encoding="utf-8").read()
+    if "<BaseCard>" not in s:
+        skip("tools-collapse")
+    else:
+        tools_cards = [
+            (
+                '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiFileChart class="mr-2" />\n            <span> {{ $t("tools.reports") }} </span>\n            <template #description> {{ $t("tools.reports_sub") }} </template>\n          </BaseSectionHeader>\n        </template>',
+                '      <details class="group rounded-xl border bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">\n          {{ $t("tools.reports") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">2 项</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>\n        <p class="px-4 pb-1 pt-2 text-xs text-muted-foreground">{{ $t("tools.reports_sub") }}</p>',
+            ),
+            (
+                '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDatabase class="mr-2" />\n            <span> {{ $t("tools.import_export") }} </span>\n            <template #description>\n              {{ $t("tools.import_export_sub") }}\n            </template>\n          </BaseSectionHeader>\n        </template>',
+                '      <details class="group rounded-xl border bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">\n          {{ $t("tools.import_export") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">CSV</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>\n        <p class="px-4 pb-1 pt-2 text-xs text-muted-foreground">{{ $t("tools.import_export_sub") }}</p>',
+            ),
+            (
+                '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiPackageVariant class="mr-2" />\n            <span> {{ $t("tools.backups") }} </span>\n            <template #description> {{ $t("tools.backups_sub") }} </template>\n          </BaseSectionHeader>\n        </template>',
+                '      <details class="group rounded-xl border bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">\n          {{ $t("tools.backups") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ backups.length }} 个备份</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>\n        <p class="px-4 pb-1 pt-2 text-xs text-muted-foreground">{{ $t("tools.backups_sub") }}</p>',
+            ),
+            (
+                "      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiAlert class=\"mr-2\" />\n            <span> {{ $t(\"tools.actions\") }} </span>\n            <template #description>\n              <!-- eslint-disable-next-line vue/no-v-html -->\n              <div v-html=\"DOMPurify.sanitize($t('tools.actions_sub'))\" />\n            </template>\n          </BaseSectionHeader>\n        </template>",
+                "      <details class=\"group rounded-xl border bg-card\">\n        <summary class=\"flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden\">\n          {{ $t(\"tools.actions\") }}\n          <span class=\"ml-auto text-xs font-normal text-muted-foreground\">6 项 · 慎用</span>\n          <MdiChevronDown class=\"size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180\" />\n        </summary>\n        <div class=\"px-4 pb-1 pt-2 text-xs text-muted-foreground\" v-html=\"DOMPurify.sanitize($t('tools.actions_sub'))\" />",
+            ),
+        ]
+        if not all(old in s for old, _ in tools_cards) or s.count("      </BaseCard>") != 4:
+            fail("tools-collapse", "BaseCard 锚点未找到")
+        else:
+            for old, new in tools_cards:
+                s = s.replace(old, new, 1)
+            s = s.replace("      </BaseCard>", "      </details>")
+            s = s.replace('  import MdiPackageVariant from "~icons/mdi/package-variant";',
+                          '  import MdiChevronDown from "~icons/mdi/chevron-down";', 1)
+            for imp in ['  import MdiFileChart from "~icons/mdi/file-chart";\n',
+                        '  import MdiDatabase from "~icons/mdi/database";\n',
+                        '  import MdiAlert from "~icons/mdi/alert";\n',
+                        '  import MdiPackageVariant from "~icons/mdi/package-variant";\n',
+                        '  import BaseCard from "@/components/Base/Card.vue";\n',
+                        '  import BaseSectionHeader from "@/components/Base/SectionHeader.vue";\n']:
+                s = s.replace(imp, "", 1)
+            open(tp, "w", encoding="utf-8").write(s)
+            done("tools-collapse 工具页 4 大卡 → 折叠分区")
+
+    # DetailAction 紧凑化（仅工具页使用）：行高/标题/描述/按钮全面降档
+    da = f"{fe}/components/DetailAction.vue"
+    rep(da, '  <div class="flex flex-col gap-10 py-6 md:flex-row">',
+            '  <div class="flex flex-col gap-2 py-3 md:flex-row md:items-center">', "detailaction-compact-layout")
+    rep(da, '      <h4 class="mb-1 text-lg font-semibold">',
+            '      <h4 class="mb-0.5 text-sm font-semibold">', "detailaction-compact-title")
+    rep(da, '      <p class="text-sm">', '      <p class="text-xs text-muted-foreground">', "detailaction-compact-desc")
+    rep(da, '''        <NuxtLink :to="to" :class="buttonVariants({ size: 'lg' })" class="min-w-52 grow">''',
+            '''        <NuxtLink :to="to" :class="buttonVariants()" class="min-w-36 grow md:grow-0">''', "detailaction-compact-linkbtn")
+    rep(da, '''        <Button class="min-w-52 grow" size="lg" @click="$emit('action')">''',
+            '''        <Button class="min-w-36 grow md:grow-0" @click="$emit('action')">''', "detailaction-compact-btn")
+
+    # 集合页去重复标题（布局已按路由出 h1，页内不再重复）
+    rep(f"{fe}/pages/collection/index/entity-types.vue",
+        '    <!-- Page Content -->\n    <div class="mb-4 flex items-center justify-between">\n      <h3 class="text-lg font-medium">{{ t("components.entityTypes.page.title") }}</h3>\n      <Button size="sm" @click="openDialog(DialogID.CreateEntityType)">',
+        '    <!-- Page Content -->\n    <div class="mb-4 flex items-center justify-end">\n      <Button size="sm" @click="openDialog(DialogID.CreateEntityType)">',
+        "entitytypes-dedup-title")
+    rep(f"{fe}/pages/collection/index/notifiers.vue",
+        '      <header class="mb-2 flex items-center gap-2">\n        <MdiMegaphone class="-mt-1" />\n        <div>\n          <h2 class="text-lg font-semibold">{{ $t("profile.notifiers") }}</h2>\n          <p class="text-sm text-muted-foreground">{{ $t("profile.notifiers_sub") }}</p>\n        </div>\n      </header>',
+        '      <p class="mb-2 text-xs text-muted-foreground">{{ $t("profile.notifiers_sub") }}</p>',
+        "notifiers-dedup-title")
+    rep(f"{fe}/pages/collection/index/notifiers.vue",
+        '  import MdiMegaphone from "~icons/mdi/megaphone";\n', "",
+        "notifiers-megaphone-rm")
+
     # ---- 8. 进销存 biz 路由 ----
     p = f"{be}/app/api/routes.go"
     s = open(p, encoding="utf-8").read()
