@@ -962,17 +962,31 @@ def main():
             s = s.replace(notice_old, hub_new, 1)
             s = s.replace('  import MdiContentCopy from "~icons/mdi/content-copy";',
                           '  import MdiContentCopy from "~icons/mdi/content-copy";\n  import MdiChevronRight from "~icons/mdi/chevron-right";', 1)
-            s = s.replace('  const gxTheme = ref("");',
-                          '  const sysLinks = [\n'
+            s = s.replace('  const { t } = useI18n();',
+                          '  const { t } = useI18n();\n  const sysLinks = [\n'
                           '    { name: "成员", desc: "集合成员与角色", to: "/collection/members" },\n'
                           '    { name: "邀请", desc: "邀请新成员加入", to: "/collection/invites" },\n'
                           '    { name: "通知", desc: "库存事件提醒（Webhook）", to: "/collection/notifiers" },\n'
                           '    { name: "设置", desc: "集合名称与偏好", to: "/collection/settings" },\n'
                           '    { name: "工具", desc: "导入导出 / 备份 / 批量操作", to: "/collection/tools" },\n'
-                          '  ];\n'
-                          '  const gxTheme = ref("");', 1)
-            open(pp, "w", encoding="utf-8").write(s)
-            done("profile-syshub /profile 系统管理入口卡")
+                          '  ];', 1)
+            if "const sysLinks" not in s:
+                fail("profile-syshub", "sysLinks 注入锚点未找到")
+            else:
+                open(pp, "w", encoding="utf-8").write(s)
+                done("profile-syshub /profile 系统管理入口卡")
+    # sysLinks 定义兜底（7e 曾锚定 gxTheme——pristine 上该变量由 theme-toggles 后注入，静默失败；改锚 useI18n。
+    # 注意：audit-script 也锚定 useI18n 并插在中间，跳过判定必须查「const sysLinks」全文而非邻接串）
+    s = open(pp, encoding="utf-8").read()
+    if "const sysLinks" in s:
+        skip("profile-syslinks-def")
+    elif '  const { t } = useI18n();' not in s:
+        fail("profile-syslinks-def", "useI18n 锚点未找到")
+    else:
+        open(pp, "w", encoding="utf-8").write(s.replace(
+            '  const { t } = useI18n();',
+            '  const { t } = useI18n();\n  const sysLinks = [\n    { name: "成员", desc: "集合成员与角色", to: "/collection/members" },\n    { name: "邀请", desc: "邀请新成员加入", to: "/collection/invites" },\n    { name: "通知", desc: "库存事件提醒（Webhook）", to: "/collection/notifiers" },\n    { name: "设置", desc: "集合名称与偏好", to: "/collection/settings" },\n    { name: "工具", desc: "导入导出 / 备份 / 批量操作", to: "/collection/tools" },\n  ];', 1))
+        done("profile-syslinks-def")
 
     # ---- 8. 进销存 biz 路由 ----
     p = f"{be}/app/api/routes.go"
@@ -1112,8 +1126,22 @@ def main():
         "(key.ctrl === undefined || event.ctrlKey === key.ctrl)",
         "(key.ctrl === undefined || event.ctrlKey === key.ctrl || (key.ctrl && event.metaKey))",
         "hotkey-meta-key")
-    rep(dv,
-        '''  const quickMenuActions = reactive([
+    rep_any(dv,
+        ['''  const quickMenuActions = reactive([
+    ...dropdown.map(v => ({
+      text: computed(() => v.name.value),
+      dialogId: v.dialogId,
+      shortcut: v.shortcut.split("+")[1] as string,
+      id: v.id,
+      type: "create" as const,
+    })),
+    ...nav.map(v => ({
+      text: computed(() => v.name.value),
+      href: v.to,
+      type: "navigate" as const,
+    })),
+  ]);''',
+         '''  const quickMenuActions = reactive([
     ...dropdown.map(v => ({
       text: computed(() => v.name.value),
       dialogId: v.dialogId,
@@ -1125,7 +1153,7 @@ def main():
       { text: computed(() => v.name.value), href: v.to, type: "navigate" as const },
       ...(v.collapsible || []).map(c => ({ text: computed(() => c.name.value), href: c.to, type: "navigate" as const })),
     ]),
-  ]);''',
+  ]);'''],
         '''  const quickMenuActions = reactive([
     { text: "新增物品", href: "/ledger?add=1", type: "navigate" as const },
     { text: "AI 新增（拍照识别）", href: "/ledger?ai=1", type: "navigate" as const },
@@ -1299,10 +1327,13 @@ def main():
             '  const { t } = useI18n();',
             '  const { t } = useI18n();\n  const $gx = useNuxtApp().$gxFetch as typeof globalThis.$fetch;\n  const recentChanges = ref<Array<Record<string, any>>>([]);\n  function actLabel(a: string): string {\n    const m: Record<string, string> = { "intake.create": "入库", "intake.rollback": "回滚入库", "outbound.create": "出库", "outbound.rollback": "回滚出库", "ledger.field_patch": "修改字段", "trash2.mark": "标记删除", "trash2.purge": "彻底删除", "gx.bulk_apply": "批量修改" };\n    return m[a] || a;\n  }\n  function dtGx(ts: string): string { return String(ts || "").slice(5, 16).replace("T", " "); }\n  onMounted(async () => {\n    try {\n      const a = await $gx<Array<Record<string, any>>>("/api/v1/audit", { params: { limit: 12 } });\n      recentChanges.value = Array.isArray(a) ? a : ((a as any).entries || []);\n    } catch (_e) { /* ignore */ }\n  });',
             "profile-audit-script")
-    rep(f"{fe}/pages/profile.vue",
-        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />',
-        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <span> 最近变更 </span>\n            <template #description> 最近 12 条库存操作记录 </template>\n          </BaseSectionHeader>\n        </template>\n        <div class="px-4 pb-4">\n          <div v-if="!recentChanges.length" class="py-4 text-center text-sm text-muted-foreground">暂无记录</div>\n          <div v-else class="divide-y text-sm">\n            <div v-for="(r, i) in recentChanges" :key="i" class="flex items-center gap-2 py-1.5">\n              <span class="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{{ dtGx(r.ts) }}</span>\n              <span class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ actLabel(r.action) }}</span>\n              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </BaseCard>\n\n      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />',
-        "profile-audit-card")
+    if "最近变更" in _prof_s:
+        skip("profile-audit-card")
+    else:
+        rep(f"{fe}/pages/profile.vue",
+            '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />',
+            '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <span> 最近变更 </span>\n            <template #description> 最近 12 条库存操作记录 </template>\n          </BaseSectionHeader>\n        </template>\n        <div class="px-4 pb-4">\n          <div v-if="!recentChanges.length" class="py-4 text-center text-sm text-muted-foreground">暂无记录</div>\n          <div v-else class="divide-y text-sm">\n            <div v-for="(r, i) in recentChanges" :key="i" class="flex items-center gap-2 py-1.5">\n              <span class="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{{ dtGx(r.ts) }}</span>\n              <span class="rounded bg-muted px-1.5 py-0.5 text-xs">{{ actLabel(r.action) }}</span>\n              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </BaseCard>\n\n      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />',
+            "profile-audit-card")
     # 主题设置：ThemePicker（30+ daisyUI 主题会覆盖 Groza 配色）→ 外观/大字号开关
     _prof_s = open(_prof, encoding="utf-8").read()
     if "setGxTheme" in _prof_s:
@@ -1316,6 +1347,72 @@ def main():
         '          <ThemePicker />',
         '          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">\n            <span class="text-sm text-muted-foreground">外观</span>\n            <div class="flex gap-1 rounded-xl border bg-card p-1">\n              <button\n                v-for="o in [[\'\', \'跟随系统\'], [\'light\', \'浅色\'], [\'dark\', \'深色\']]"\n                :key="o[0]"\n                class="rounded-lg px-2.5 py-1 text-sm transition"\n                :class="gxTheme === o[0] ? \'bg-primary text-primary-foreground\' : \'hover:bg-muted\'"\n                @click="setGxTheme(o[0])"\n              >\n                {{ o[1] }}\n              </button>\n            </div>\n            <span class="text-sm text-muted-foreground">大字号</span>\n            <button\n              class="rounded-lg border px-2.5 py-1 text-sm transition"\n              :class="bigfont ? \'bg-primary text-primary-foreground\' : \'hover:bg-muted\'"\n              @click="toggleBigfont"\n            >\n              {{ bigfont ? "已开启" : "已关闭" }}\n            </button>\n          </div>',
         "profile-theme-toggles-ui")
+
+    # ---- 7f. /profile 信息分层：h1 + 系统管理卡置顶 + 低频卡默认折叠 ----
+    # 注意：本块必须在 profile-audit-card / profile-theme-toggles-ui 之后执行
+    # （最近变更卡/主题开关由它们注入，本块负责折叠成形）
+    pp = f"{fe}/pages/profile.vue"
+    rep(pp,
+        '    <BaseContainer class="flex flex-col gap-4">\n      <BaseCard>',
+        '    <BaseContainer class="flex flex-col gap-4">\n      <h1 class="mb-1 px-1 font-display text-xl font-medium tracking-tight md:text-2xl">我的</h1>\n      <BaseCard>',
+        "profile-h1")
+    rep(pp,
+        '  import MdiChevronRight from "~icons/mdi/chevron-right";',
+        '  import MdiChevronRight from "~icons/mdi/chevron-right";\n  import MdiChevronDown from "~icons/mdi/chevron-down";',
+        "profile-chevron-down")
+    # 系统管理卡置顶（紧跟用户资料卡）
+    s = open(pp, encoding="utf-8").read()
+    if '        <LanguageSelector />\n      </BaseCard>\n\n      <!-- 系统管理入口' in s:
+        skip("profile-hub-top")
+    elif '      <!-- 系统管理入口' not in s or '        <LanguageSelector />\n      </BaseCard>' not in s:
+        fail("profile-hub-top", "系统管理卡或用户资料卡锚点未找到")
+    else:
+        hs = s.find('      <!-- 系统管理入口')
+        he = s.find('      </BaseCard>', hs) + len('      </BaseCard>')
+        hub = s[hs:he]
+        s = s[:hs] + s[he:]
+        la = '        <LanguageSelector />\n      </BaseCard>'
+        open(pp, "w", encoding="utf-8").write(s.replace(la, la + "\n\n" + hub, 1))
+        done("profile-hub-top 系统管理卡置顶")
+    # API 密钥 → 折叠（预览：密钥数量）
+    rep(pp,
+        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiKeyVariant class="-mt-1 mr-2" />\n            <span>{{ $t("profile.api_keys") }}</span>\n            <template #description>{{ $t("profile.api_keys_sub") }}</template>\n          </BaseSectionHeader>\n        </template>',
+        '      <details class="group rounded-xl border bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">\n          {{ $t("profile.api_keys") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ apiKeys.length }} 个</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>',
+        "profile-apikeys-collapse")
+    rep(pp,
+        '              {{ $t("profile.api_key_create") }}\n            </Button>\n          </div>\n        </div>\n      </BaseCard>',
+        '              {{ $t("profile.api_key_create") }}\n            </Button>\n          </div>\n        </div>\n      </details>',
+        "profile-apikeys-collapse-end")
+    # 主题设置 → 偏好（折叠；预览：外观/大字号当前值）
+    rep(pp,
+        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiFill class="mr-2" />\n            <span> {{ $t("profile.theme_settings") }} </span>\n            <template #description>\n              {{ $t("profile.theme_settings_sub") }}\n            </template>\n          </BaseSectionHeader>\n        </template>',
+        '      <details class="group rounded-xl border bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">\n          偏好\n          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ gxTheme === "dark" ? "深色" : gxTheme === "light" ? "浅色" : "跟随系统" }}{{ bigfont ? " · 大字号" : "" }}</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>',
+        "profile-theme-collapse")
+    rep(pp,
+        '              {{ bigfont ? "已开启" : "已关闭" }}\n            </button>\n          </div>\n        </div>\n      </BaseCard>',
+        '              {{ bigfont ? "已开启" : "已关闭" }}\n            </button>\n          </div>\n        </div>\n      </details>',
+        "profile-theme-collapse-end")
+    # 最近变更 → 折叠（预览：条数）
+    rep(pp,
+        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <span> 最近变更 </span>\n            <template #description> 最近 12 条库存操作记录 </template>\n          </BaseSectionHeader>\n        </template>',
+        '      <details class="group rounded-xl border bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">\n          最近变更\n          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ recentChanges.length }} 条</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>',
+        "profile-changes-collapse")
+    rep(pp,
+        '              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </BaseCard>',
+        '              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ r.name || r.supplier || r.entityId || r.intakeId || r.outboundId || "" }}</span>\n            </div>\n          </div>\n        </div>\n      </details>',
+        "profile-changes-collapse-end")
+    # 删除账户 → 折叠（红色警示行）
+    rep(pp,
+        '      <BaseCard>\n        <template #title>\n          <BaseSectionHeader>\n            <MdiDelete class="-mt-1 mr-2" />\n            <span> {{ $t("profile.delete_account") }} </span>\n            <template #description> {{ $t("profile.delete_account_sub") }} </template>\n          </BaseSectionHeader>\n        </template>',
+        '      <details class="group rounded-xl border border-destructive/40 bg-card">\n        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-destructive [&::-webkit-details-marker]:hidden">\n          {{ $t("profile.delete_account") }}\n          <span class="ml-auto text-xs font-normal text-muted-foreground">不可撤销</span>\n          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />\n        </summary>\n        <p class="px-4 pb-1 pt-2 text-xs font-normal text-muted-foreground">{{ $t("profile.delete_account_sub") }}</p>',
+        "profile-delete-collapse")
+    rep(pp,
+        '          <Button size="sm" variant="destructive" @click="deleteProfile">\n            {{ $t("profile.delete_account") }}\n          </Button>\n        </div>\n      </BaseCard>',
+        '          <Button size="sm" variant="destructive" @click="deleteProfile">\n            {{ $t("profile.delete_account") }}\n          </Button>\n        </div>\n      </details>',
+        "profile-delete-collapse-end")
+    # 折叠后不再用的图标 import
+    rep(pp, '  import MdiKeyVariant from "~icons/mdi/key-variant";\n', "", "profile-icon-rm-keyvariant")
+    rep(pp, '  import MdiFill from "~icons/mdi/fill";\n', "", "profile-icon-rm-fill")
 
     # 默认落地页：/home -> /tasks（待办）
     rep(f"{fe}/pages/index.vue", 'return "/home";', 'return "/tasks";', "landing-home-to-tasks")

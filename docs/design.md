@@ -685,3 +685,9 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **动机**：用户提议「很多 tab 页面可以合并到点击用户名进的页面」。成员/邀请/通知/设置/工具 5 项全是低频「团队与系统维护」，占着侧栏系统组一半位置。
 - **改法**：① nav_body 删 5 项 + 5 条 nav-fold-* rep 迁移已补丁态；系统组剩 字段/选项/标签/分类/结构（库存建模相关，高频参照）。② /profile 上游「已迁移」提示卡（moved_notice，本就带 TODO 待删）替换为「系统管理」入口卡：iOS 设置式行链（名称+一句说明+chevron），通 5 页。③ 页面路由全部保留，直接 URL 仍可达；⌘K 随 nav 自动收敛。
 - **验证**：verify_menu2.py 更新——侧栏 11 项全 2 字、5 个旧项不在菜单、/profile 5 行链接齐、点工具跳 /collection/tools。
+
+### /profile 信息分层（34）
+- **问题**：系统管理卡（功能入口）埋在第 3 张卡，全页 6 张大卡全展开 2460px，进来找不到入口。
+- **改法**（patch 7f 块）：① 补 h1「我的」（集合页之外唯一缺页头的页）；② 系统管理卡置顶到用户资料卡之后（profile-hub-top 搬移块，幂等按相对位置判断）；③ API 密钥/偏好(原主题设置)/最近变更/删除账户 4 张卡 → details 默认折叠，summary 带当前值预览（N 个密钥 / 跟随系统·大字号 / N 条 / 不可撤销），删除账户卡红色描边警示；④ 清理 MdiKeyVariant/MdiFill 失效 import。
+- **补丁顺序教训（重要）**：7f 依赖 profile-audit-card（注入最近变更卡）与 profile-theme-toggles-ui（注入外观开关）的产物，必须排在它们**之后**执行；profile-audit-card 需加「最近变更」文本守卫才幂等（折叠态替换后旧锚点消失）。另修复 quickmenu-groza 锚点腐烂：v0.26.2 pristine 的 quickMenuActions 是 nav.map 形态，补丁 old 写成历史 flatMap 形态——复用已补丁态时该补丁永远 SKIP 不可见，FRESH=1 才暴露。改 rep_any 双形态覆盖。**教训：动过注入顺序/形态的补丁，必须跑一次 FRESH=1 验证 pristine 路径。**
+- **验证**：FRESH=1 全量重建零 FAIL；verify_menu2.py 增补：h1=我的、用户资料<系统管理<API 顺序、4 折叠卡默认收起、偏好展开见外观开关。
