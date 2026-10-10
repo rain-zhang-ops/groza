@@ -680,3 +680,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **去重复标题**（布局已按路由出 h1）：结构页删内层 h3（新建按钮改右对齐）；通知页删 header 图标+h2（保留一句说明）。
 - **验证**：verify_system_pages.py——选项 chips 增删+dirty 点出现/消失；工具页 4 分区默认折叠、展开可见「清空库存」、默认高 900px；结构/通知页无重复标题。双端全过。
 - **Playwright 选器教训**：`section:has(...)` 会命中包裹祖先 section，first 取到的是最外层；用「输入框 placeholder → xpath=.. → 兄弟 chip」反向定位更稳。
+
+### 侧栏再收敛：低频维护页收进 /profile（33）
+- **动机**：用户提议「很多 tab 页面可以合并到点击用户名进的页面」。成员/邀请/通知/设置/工具 5 项全是低频「团队与系统维护」，占着侧栏系统组一半位置。
+- **改法**：① nav_body 删 5 项 + 5 条 nav-fold-* rep 迁移已补丁态；系统组剩 字段/选项/标签/分类/结构（库存建模相关，高频参照）。② /profile 上游「已迁移」提示卡（moved_notice，本就带 TODO 待删）替换为「系统管理」入口卡：iOS 设置式行链（名称+一句说明+chevron），通 5 页。③ 页面路由全部保留，直接 URL 仍可达；⌘K 随 nav 自动收敛。
+- **验证**：verify_menu2.py 更新——侧栏 11 项全 2 字、5 个旧项不在菜单、/profile 5 行链接齐、点工具跳 /collection/tools。

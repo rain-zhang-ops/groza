@@ -889,6 +889,91 @@ def main():
         '  import MdiMegaphone from "~icons/mdi/megaphone";\n', "",
         "notifiers-megaphone-rm")
 
+    # ---- 7e. 侧栏再收敛：成员/邀请/通知/设置/工具 收进 /profile「系统管理」卡 ----
+    # nav_body 源已删（pristine 路径）；以下为已补丁态迁移（nav-restructure 幂等跳过时生效）
+    for nav_ent, nav_id in [
+        ('    {\n      icon: MdiAccountMultipleOutline,\n      id: 61, group: "系统",\n      active: computed(() => route.path === "/collection/members"),\n      name: computed(() => t("collection.tabs.members")),\n      to: "/collection/members",\n    },\n', "members"),
+        ('    {\n      icon: MdiEmailOutline,\n      id: 62, group: "系统",\n      active: computed(() => route.path === "/collection/invites"),\n      name: computed(() => t("collection.tabs.invites")),\n      to: "/collection/invites",\n    },\n', "invites"),
+        ('    {\n      icon: MdiBellOutline,\n      id: 63, group: "系统",\n      active: computed(() => route.path === "/collection/notifiers"),\n      name: computed(() => t("collection.tabs.notifiers")),\n      to: "/collection/notifiers",\n    },\n', "notifiers"),
+        ('    {\n      icon: MdiCog,\n      id: 64, group: "系统",\n      active: computed(() => route.path === "/collection/settings"),\n      name: computed(() => t("collection.tabs.settings")),\n      to: "/collection/settings",\n    },\n', "settings"),
+        ('    {\n      icon: MdiWrench,\n      id: 9082, group: "系统",\n      active: computed(() => route.path === "/collection/tools"),\n      name: computed(() => "工具"),\n      to: "/collection/tools",\n    },\n', "tools"),
+    ]:
+        rep(dv, nav_ent, "", "nav-fold-" + nav_id)
+
+    # /profile：上游「已迁移」提示卡 →「系统管理」入口卡（低频页面统一入口，iOS 设置式行链）
+    pp = f"{fe}/pages/profile.vue"
+    s = open(pp, encoding="utf-8").read()
+    if "sysLinks" in s:
+        skip("profile-syshub")
+    else:
+        notice_old = (
+            '      <!-- TODO: Remove this notice once users are familiar with the collection-based settings. -->\n'
+            '      <BaseCard>\n'
+            '        <template #title>\n'
+            '          <BaseSectionHeader>\n'
+            '            <span> {{ $t("profile.moved_notice_title") }} </span>\n'
+            '            <template #description>\n'
+            '              {{ $t("profile.moved_notice_description") }}\n'
+            '            </template>\n'
+            '          </BaseSectionHeader>\n'
+            '        </template>\n'
+            '\n'
+            '        <div class="space-y-2 px-4 pb-4 text-sm text-muted-foreground">\n'
+            '          <p>\n'
+            '            {{ $t("profile.moved_notice_body") }}\n'
+            '          </p>\n'
+            '          <div class="flex flex-wrap gap-2">\n'
+            '            <NuxtLink to="/collection/settings" class="text-primary underline">\n'
+            '              {{ $t("profile.moved_notice_link_settings") }}\n'
+            '            </NuxtLink>\n'
+            '            <NuxtLink to="/collection/notifiers" class="text-primary underline">\n'
+            '              {{ $t("profile.moved_notice_link_notifiers") }}\n'
+            '            </NuxtLink>\n'
+            '            <NuxtLink to="/collection/invites" class="text-primary underline">\n'
+            '              {{ $t("profile.moved_notice_link_invites") }}\n'
+            '            </NuxtLink>\n'
+            '          </div>\n'
+            '        </div>\n'
+            '      </BaseCard>'
+        )
+        hub_new = (
+            '      <!-- 系统管理入口：低频页面收敛于此，侧栏不再占位 -->\n'
+            '      <BaseCard>\n'
+            '        <template #title>\n'
+            '          <BaseSectionHeader>\n'
+            '            <span> 系统管理 </span>\n'
+            '            <template #description> 团队与系统维护（低频入口） </template>\n'
+            '          </BaseSectionHeader>\n'
+            '        </template>\n'
+            '        <nav class="divide-y border-t">\n'
+            '          <NuxtLink v-for="l in sysLinks" :key="l.to" :to="l.to" class="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-muted/50">\n'
+            '            <span class="min-w-0 flex-1">\n'
+            '              <span class="block font-medium">{{ l.name }}</span>\n'
+            '              <span class="block text-xs text-muted-foreground">{{ l.desc }}</span>\n'
+            '            </span>\n'
+            '            <MdiChevronRight class="size-4 shrink-0 text-muted-foreground" />\n'
+            '          </NuxtLink>\n'
+            '        </nav>\n'
+            '      </BaseCard>'
+        )
+        if notice_old not in s:
+            fail("profile-syshub", "迁移提示卡锚点未找到")
+        else:
+            s = s.replace(notice_old, hub_new, 1)
+            s = s.replace('  import MdiContentCopy from "~icons/mdi/content-copy";',
+                          '  import MdiContentCopy from "~icons/mdi/content-copy";\n  import MdiChevronRight from "~icons/mdi/chevron-right";', 1)
+            s = s.replace('  const gxTheme = ref("");',
+                          '  const sysLinks = [\n'
+                          '    { name: "成员", desc: "集合成员与角色", to: "/collection/members" },\n'
+                          '    { name: "邀请", desc: "邀请新成员加入", to: "/collection/invites" },\n'
+                          '    { name: "通知", desc: "库存事件提醒（Webhook）", to: "/collection/notifiers" },\n'
+                          '    { name: "设置", desc: "集合名称与偏好", to: "/collection/settings" },\n'
+                          '    { name: "工具", desc: "导入导出 / 备份 / 批量操作", to: "/collection/tools" },\n'
+                          '  ];\n'
+                          '  const gxTheme = ref("");', 1)
+            open(pp, "w", encoding="utf-8").write(s)
+            done("profile-syshub /profile 系统管理入口卡")
+
     # ---- 8. 进销存 biz 路由 ----
     p = f"{be}/app/api/routes.go"
     s = open(p, encoding="utf-8").read()
@@ -1015,41 +1100,6 @@ def main():
         '      active: computed(() => route.path === "/collection/entity-types"),\n'
         '      name: computed(() => "结构"),\n'
         '      to: "/collection/entity-types",\n'
-        '    },\n'
-        '    {\n'
-        '      icon: MdiAccountMultipleOutline,\n'
-        '      id: 61, group: "系统",\n'
-        '      active: computed(() => route.path === "/collection/members"),\n'
-        '      name: computed(() => t("collection.tabs.members")),\n'
-        '      to: "/collection/members",\n'
-        '    },\n'
-        '    {\n'
-        '      icon: MdiEmailOutline,\n'
-        '      id: 62, group: "系统",\n'
-        '      active: computed(() => route.path === "/collection/invites"),\n'
-        '      name: computed(() => t("collection.tabs.invites")),\n'
-        '      to: "/collection/invites",\n'
-        '    },\n'
-        '    {\n'
-        '      icon: MdiBellOutline,\n'
-        '      id: 63, group: "系统",\n'
-        '      active: computed(() => route.path === "/collection/notifiers"),\n'
-        '      name: computed(() => t("collection.tabs.notifiers")),\n'
-        '      to: "/collection/notifiers",\n'
-        '    },\n'
-        '    {\n'
-        '      icon: MdiCog,\n'
-        '      id: 64, group: "系统",\n'
-        '      active: computed(() => route.path === "/collection/settings"),\n'
-        '      name: computed(() => t("collection.tabs.settings")),\n'
-        '      to: "/collection/settings",\n'
-        '    },\n'
-        '    {\n'
-        '      icon: MdiWrench,\n'
-        '      id: 9082, group: "系统",\n'
-        '      active: computed(() => route.path === "/collection/tools"),\n'
-        '      name: computed(() => "工具"),\n'
-        '      to: "/collection/tools",\n'
         '    },\n'
     )
     rep(dv,
