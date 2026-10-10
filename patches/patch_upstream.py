@@ -319,6 +319,136 @@ def main():
     json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     done("menu-zh 菜单统一中文")
 
+    # ---- 2b. 补齐 zh-CN 缺失 key（fallbackLocale=zh-CN 后缺 key 会裸显示 key 名）----
+    # 只补缺失项，不覆盖既有翻译；幂等。
+    fill = {
+        "global": {"entity": "条目", "entity_type": "结构", "item": "物品", "location": "分类"},
+        "languages": {"en@pirate": "English (Pirate)"},
+        "components": {
+            "entityTypes": {
+                "page": {"title": "结构", "create": "新建", "empty_title": "还没有结构定义。", "empty_button": "新建结构"},
+                "card": {"badge_container": "容器", "default_template": "默认模板：{name}",
+                          "actions": {"delete": "删除"}, "tooltip": {"delete": "删除", "edit": "编辑"}},
+                "confirm": {
+                    "convert_item_to_location": "将物品类型转为分类类型会丢失该类型下实体的字段数据，确定继续吗？",
+                    "delete_entity_type": "确定删除「{name}」吗？",
+                },
+                "create_dialog": {"title": "新建结构", "name_label": "名称", "is_container_location_type_label": "是容器 / 分类类型", "button": "创建"},
+                "update_dialog": {"title": "编辑结构", "name_label": "名称", "is_container_location_type_label": "是容器 / 分类类型", "button": "保存"},
+                "toasts": {
+                    "create_failed": "创建结构失败", "create_success": "结构已创建",
+                    "delete_confirm_failed": "删除失败：请先移除使用该结构的实体", "delete_success": "结构已删除",
+                    "name_required": "请填写名称", "update_failed": "更新结构失败", "update_success": "结构已更新",
+                },
+            },
+            "entity": {
+                "selector": {"placeholder": "选择类型…"},
+                "create_modal": {
+                    "clear_template": "清除模板", "delete_photo": "删除照片", "rotate_photo": "旋转照片",
+                    "entity_description": "{type}描述", "entity_name": "{type}名称",
+                    "entity_photo": "{type}照片", "entity_quantity": "{type}数量",
+                    "item_selector_no_results_text": "输入以搜索…", "parent_item": "父物品",
+                    "product_tooltip_input_barcode": "手动输入条码自动填充", "product_tooltip_scan_barcode": "拍照条码自动填充",
+                    "set_as_primary_photo": "{ isPrimary, select, true {取消封面} other {设为封面} }",
+                    "upload_photos": "上传照片", "uploaded": "已上传照片",
+                    "toast": {
+                        "already_creating": "正在创建{type}，请稍候", "create_failed": "{type}创建失败", "create_success": "{type}已创建",
+                        "failed_load_parent": "加载父物品失败，请手动选择", "no_canvas_support": "当前浏览器不支持图片处理",
+                        "please_select_entity_type": "请先选择结构类型", "please_select_location": "请先选择分类",
+                        "rotate_failed": "旋转图片失败：{ error }", "rotate_process_failed": "处理旋转后的图片失败",
+                        "some_photos_failed": "{count, plural, =0 {没有可上传的照片} =1 {1 张照片上传失败} other {{count} 张照片上传失败}}",
+                        "upload_failed": "照片上传失败：{ photoName }",
+                        "upload_success": "{count, plural, =0 {没有照片上传} =1 {照片已上传} other {{count} 张照片全部上传成功}}",
+                        "uploading_photos": "{count, plural, =0 {没有可上传的照片} =1 {正在上传 1 张照片…} other {正在上传 {count} 张照片…}}",
+                    },
+                },
+            },
+            "location": {"create_item": "新建物品"},
+        },
+        "items": {"edit": {"change_entity_type_confirm": "更换结构可能丢失新旧结构不共有的字段数据，确定更换吗？"}},
+    }
+    def deep_fill(dst, src):
+        added = 0
+        for k, v in src.items():
+            if isinstance(v, dict):
+                added += deep_fill(dst.setdefault(k, {}), v)
+            elif k not in dst:
+                dst[k] = v; added += 1
+        return added
+    added = deep_fill(d, fill)
+    json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    done(f"locale-zh-fill 补齐缺失翻译 {added} 项")
+
+    # ---- 2b2. 低质量上游翻译强制覆盖（通知器→通知、帐户→账户、资产ID→资产编号、物料清单→库存清单等）----
+    polish = {
+        "profile": {
+            "delete_account": "删除账户",
+            "delete_account_sub": "删除您的账户及其所有相关数据。此操作无法撤销。",
+            "api_keys_sub": "用于程序化访问的静态令牌，每个密钥都拥有与您账户相同的权限。",
+            "notifiers": "通知",
+            "notifiers_sub": "接收库存事件的提醒通知。",
+            "no_notifiers": "尚未配置通知。",
+            "notifier_modal": "{ type, select, true {编辑} false {新建} other {其他}} 通知",
+            "delete_notifier_confirm": "确定要删除此通知吗？",
+            "moved_notice_title": "正在寻找通知、邀请或币种设置？",
+            "moved_notice_body": "通知、邀请和币种设置已移至集合页面。",
+            "moved_notice_link_notifiers": "集合通知",
+            "toast": {
+                "failed_create_notifier": "创建通知失败。", "failed_delete_notifier": "删除通知失败。",
+                "failed_test_notifier": "测试通知失败。", "failed_update_notifier": "更新通知失败。",
+                "notifier_test_success": "通知测试成功。",
+            },
+        },
+        "items": {
+            "asset_id": "资产编号",
+            "associated_with_multiple": "此资产编号与多个物品相关联",
+            "invalid_asset_id": "无效的资产编号",
+            "query_id": "查询资产编号：{id}",
+            "tip_2": "以“#”开头的搜索将查询资产编号（例如“#000-001”）",
+        },
+        "index": {"toast": {"oidc_access_denied": "访问被拒绝：您的账户没有所需的角色/组成员身份"}},
+        "reports": {"label_generator": {"instruction_2": "这些标签会打印包含 URL 的二维码与资产编号。即使在 Groza 设置中禁用了资产编号，标签仍可打印，但不会关联任何物品。"}},
+        "tools": {
+            "actions_set": {
+                "ensure_ids": "补齐资产编号", "ensure_ids_button": "补齐资产编号",
+                "ensure_ids_confirm": "确定要补齐所有物品缺失的资产编号吗？这可能需要一段时间，且无法撤销。",
+                "ensure_ids_sub": "为尚未设置资产编号的物品分配新编号（在现有最大编号上递增）。",
+                "ensure_import_refs": "补齐导入参考号", "ensure_import_refs_button": "补齐导入参考号",
+                "ensure_import_refs_sub": "导入参考号（import_ref）用于重复导入时合并而非新增；缺失的物品将随机生成 8 位编号。",
+                "create_missing_thumbnails_sub": "为所有附件生成缺失的缩略图（已有缩略图不受影响）。缩略图在后台生成，可能需要一些时间。",
+                "set_primary_photo_sub": "将每个物品的第一张照片设为封面（仅未设置封面的物品生效）。",
+                "zero_datetimes_sub": "将库存中所有日期时间字段重置为开始日期（用于修复早期版本的日期偏移问题）。",
+                "wipe_inventory_note": "注意：只有集合所有者才能执行此操作。",
+            },
+            "reports_set": {
+                "asset_labels": "资产编号标签",
+                "asset_labels_sub": "生成可打印的资产编号标签 PDF。标签不绑定具体物品，可提前打印，到货后直接贴用。",
+                "bill_of_materials": "库存清单", "bill_of_materials_button": "生成库存清单",
+                "bill_of_materials_sub": "生成库存摘要 CSV（含物品与价格信息），可用于再次导入。",
+            },
+            "import_export_set": {
+                "export_button": "导出库存",
+                "export_sub": "按标准 CSV 格式导出库存中的所有物品。",
+                "import_ref_confirm": "确定要补齐所有物品的导入参考号吗？这可能需要一段时间，且无法撤销。",
+            },
+            "toast": {
+                "failed_ensure_ids": "补齐资产编号失败。", "failed_ensure_import_refs": "补齐导入参考号失败。",
+                "asset_success": "{results} 个物品已更新。",
+            },
+        },
+    }
+    def deep_update(dst, src):
+        n = 0
+        for k, v in src.items():
+            if isinstance(v, dict):
+                n += deep_update(dst.setdefault(k, {}), v)
+            else:
+                if dst.get(k) != v: dst[k] = v; n += 1
+        return n
+    pn = deep_update(d, polish)
+    json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    done(f"locale-zh-polish 覆盖低质量翻译 {pn} 项")
+
     # ---- 2c. 品牌与配色：Groza ----
     rep(f"{fe}/nuxt.config.ts",
         'name: "Homebox",\n      short_name: "Homebox",',

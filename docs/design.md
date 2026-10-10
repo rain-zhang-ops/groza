@@ -633,3 +633,10 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **病句/格式**：「买家 / 去向（必填建议填）」→「（建议填写）」；「联网搜索 1元/次」→「1 元/次」（两处空格统一）；「导出CSV」→「导出 CSV」（中英间距）。
 - **实现**：nav 改名走补丁（nav_body 源同步 + nav-ledger-fullname rep 兜底——nav-restructure 幂等跳过时仍生效）；页面文案直接改 frontend/pages 定制文件（25 处带断言替换）；ui-standard §9 增补「三处同名」「单款称物品、禁商品」条款。
 - **验证**：Playwright 18 项断言（侧栏名/三页 h1 与 title/四页无「商品」/链接全名/占位属性/选项 title）全过。
+
+### 文案深挖：i18n 缺 key 裸显示 + 低质量翻译覆盖（28）
+- **i18n 裸 key 事故**：fallbackLocale 改 zh-CN 后，zh-CN 缺失的 key 不再回退英文而是直接显示 key 名——「结构」页整页裸露 `components.entityTypes.page.title` 等。全量 diff en(816)/zh-CN，缺 61 key 一次补齐（entityTypes 整组、entity create_modal、global.item=物品/location=分类/entity=条目/entity_type=结构 等），补丁块 locale-zh-fill 只补缺失不覆盖、幂等。
+- **低质量社区翻译强制覆盖**（locale-zh-polish，45 项）：「通知器→通知」（profile.notifiers 全家桶 11 处）、「帐户→账户」、「资产ID→资产编号」（items/tools 9 处）、「物料清单→库存清单」、「确认资产ID/确认导入参考→补齐…」（动宾结构）、tools 页说明文去掉上游版本史叙述（v0.10.0/v0.20.0 对用户无意义）、「导出清单→导出库存」（与「导入库存」对仗）。
+- **定制页残留**：tasks 说明文「直达台账」→「直达物品台账」；fields 版本历史来源标记显示层映射（api.put→保存、restore vN→恢复自 vN、migration→迁移），DB 原值不动。
+- **审计方法**：Playwright 逐页 dump main 区可见文本 + placeholder/title 属性（比读代码全），断言含「无裸露 i18n key」正则守卫。
+- **验证**：27 项断言全过（6 页面：含新词/无旧词/无裸 key）。

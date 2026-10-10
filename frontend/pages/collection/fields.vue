@@ -59,6 +59,13 @@
     try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
   }
   const history = ref<Array<{ version: number; reason: string; createdAt: string }>>([]);
+  function reasonLabel(r: string): string {
+    if (!r) return "保存";
+    if (r === "api.put") return "保存";
+    if (r.startsWith("restore")) return "恢复自 " + (r.split(" ")[1] || "");
+    if (r.startsWith("migration")) return "迁移" + (r.includes(":") ? "：" + r.split(":").slice(1).join(":").trim() : "");
+    return r;
+  }
   const restoring = ref(0);
   async function loadHistory() {
     try { const h = await $fetch<Record<string, any>>("/api/v1/gx/config/history"); history.value = h.history || []; } catch (_e) { /* ignore */ }
@@ -299,7 +306,7 @@
         <div v-else class="divide-y rounded-lg border text-sm">
           <div v-for="h in history" :key="h.version" class="flex items-center gap-2 p-2">
             <span class="w-12 shrink-0 font-mono text-xs">v{{ h.version }}</span>
-            <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ h.reason || "保存" }}</span>
+            <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ reasonLabel(h.reason) }}</span>
             <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ (h.createdAt || "").slice(0, 16).replace("T", " ") }}</span>
             <button class="h-9 shrink-0 rounded-lg border px-3 text-xs transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="!isOwner || restoring === h.version || h.version === cfg.version" @click="restoreVersion(h.version)">{{ restoring === h.version ? "恢复中…" : "恢复" }}</button>
           </div>

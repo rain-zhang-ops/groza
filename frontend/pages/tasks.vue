@@ -126,7 +126,7 @@
           </button>
         </section>
         <p class="mt-2 text-xs text-muted-foreground">
-          点卡片直达台账对应筛选，可批量处理（差异预览→确认）并可撤销。
+          点卡片直达物品台账对应筛选，可批量处理（差异预览→确认）并可撤销。
           <template v-if="hiddenCount > 0">已隐藏 {{ hiddenCount }} 个无待办分类。</template>
         </p>
       </template>
