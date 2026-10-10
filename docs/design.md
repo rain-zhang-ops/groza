@@ -658,3 +658,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **规则**：菜单项与组名一律 2 字。收敛：物品台账→台账、库存架构→架构、集合设置→设置；其余项（待办/盘点/入库/出库/发货/选项/标签/分类/结构/成员/邀请/通知/工具）与组名（概览/库存/进出/系统）本就 2 字。三处同名规则不变，h1/title/页内引用同步改（ledger h1+title+字段指引、fields title+权限提示、tasks/ship/outbound/intake 链接与空态共 12 处）。
 - **实现**（4 条链路各覆盖 pristine 与已补丁态）：① nav_body 源改 台账/架构 + rep_any 迁移兜底（nav-ledger-shortname / nav-fields-shortname，nav-restructure 幂等跳过时收敛旧树）；② collection.tabs.settings locale 强制覆盖每跑必写（菜单/页头/title/tab 同源）；③ collection/index.vue fields tab 标签走 collection-fields-tab-unify 的「删旧插新」迁移（fields_final 改架构，旧条目自动重建）；④ 定制页直接改 frontend/ 源。
 - **验证**：补丁预跑无 FAIL；构建树 default.vue/locale/collection index 标签全 2 字。
+
+#### 30 补：「架构」更名「字段」
+- 用户反馈「架构」名不副实：该页内容是物品的字段定义（名称/类型/必填/列/筛选/单位 + 位置/媒体/组织槽位），改为「字段」——与页内主导内容、台账「自定义字段」提示同源。
+- 改动链路同 §30：nav_body 源 + nav-fields-shortname 迁移（olds 覆盖 架构/库存架构 两种历史态）、collection-fields-tab-unify 的 fields_final 收敛、fields.vue title/权限提示、ledger 字段抽屉指引（系统 → 字段）。
+- ui-standard §9 补命名原则：菜单名须贴合页面内容，不用抽象词。

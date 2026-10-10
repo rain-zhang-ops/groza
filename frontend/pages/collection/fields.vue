@@ -11,7 +11,7 @@
     middleware: ["auth"],
   });
 
-  useHead({ title: "Groza | 架构" });
+  useHead({ title: "Groza | 字段" });
 
   const TYPES = [
     { v: "text", label: "文本" },
@@ -165,7 +165,7 @@
       <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving || !isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</button>
     </Teleport>
 
-    <div v-if="!isOwner" class="rounded-xl bg-amber-500/15 p-3 text-sm text-amber-600">仅管理员（owner）可修改架构。</div>
+    <div v-if="!isOwner" class="rounded-xl bg-amber-500/15 p-3 text-sm text-amber-600">仅管理员（owner）可修改字段。</div>
 
     <div v-if="err" :class="errorCls">{{ err }}</div>
     <div v-else-if="loading" class="space-y-2">
