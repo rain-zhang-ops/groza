@@ -31,7 +31,7 @@ const defaultGxConfig = `{"version":1,"location":{"dim":"品牌","levels":["品�
 
 func gxOpen() (*sql.DB, error) {
 	db, err := sql.Open("sqlite",
-		"file:"+gxDBPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+		"file:"+gxDBPath+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,9 @@ func (a *app) handleGxConfigRestore() errchain.HandlerFunc {
 		_ = tx.QueryRow(`SELECT version FROM gx_group_config WHERE group_id=?`, gid).Scan(&cur)
 		newVer := cur + 1
 		var doc map[string]json.RawMessage
-		_ = json.Unmarshal([]byte(prev), &doc)
+		if err := json.Unmarshal([]byte(prev), &doc); err != nil || doc == nil {
+			doc = map[string]json.RawMessage{}
+		}
 		if v, e := json.Marshal(newVer); e == nil {
 			doc["version"] = v
 		}

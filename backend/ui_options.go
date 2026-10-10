@@ -38,6 +38,13 @@ func (a *app) handleUIOptionsPut() errchain.HandlerFunc {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return nil
 		}
+		tmp := uiOptionsPath + ".tmp"
+		if err := os.WriteFile(tmp, body, 0o644); err == nil {
+			if err := os.Rename(tmp, uiOptionsPath); err == nil {
+				w.WriteHeader(http.StatusNoContent)
+				return nil
+			}
+		}
 		if err := os.WriteFile(uiOptionsPath, body, 0o644); err != nil {
 			return err
 		}

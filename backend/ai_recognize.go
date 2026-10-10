@@ -160,14 +160,21 @@ func (a *app) handleAIRecognize() errchain.HandlerFunc {
 		start := strings.Index(text, "{")
 		end := strings.LastIndex(text, "}")
 		out := []byte("{}")
+		cacheable := false
 		if start >= 0 && end > start {
 			cand := text[start : end+1]
 			if json.Valid([]byte(cand)) {
-				out = []byte(cand)
+				var probe map[string]any
+				if json.Unmarshal([]byte(cand), &probe) == nil && len(probe) > 0 {
+					out = []byte(cand)
+					cacheable = true
+				}
 			}
 		}
-		_ = os.MkdirAll("/data/ai-cache", 0o755)
-		_ = os.WriteFile(cachePath, out, 0o644)
+		if cacheable {
+			_ = os.MkdirAll("/data/ai-cache", 0o755)
+			_ = os.WriteFile(cachePath, out, 0o644)
+		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(out)
 		return nil

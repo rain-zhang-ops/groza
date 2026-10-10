@@ -5,6 +5,7 @@ package main
 //   PATCH /api/v1/ledger/{id}     字段级更新（updatedAt 乐观锁，冲突返回 409）
 //   GET   /api/v1/trash2          带删除时间的回收站
 //   PUT   /api/v1/trash2          同上（兼容旧 {ids:[...]} 格式）
+//   POST  /api/v1/ledger/trash2/mark  单个物品增量标记进/出回收站（{id,mark}，合并写）
 
 import (
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -20,6 +22,7 @@ import (
 	"github.com/hay-kot/httpkit/server"
 	"github.com/samber/lo"
 	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
+	"github.com/sysadminsmedia/homebox/backend/internal/core/services/reporting/eventbus"
 	"github.com/sysadminsmedia/homebox/backend/internal/data/repo"
 	"github.com/sysadminsmedia/homebox/backend/internal/sys/validate"
 )
@@ -173,12 +176,14 @@ func (a *app) handleLedgerFieldPatch() errchain.HandlerFunc {
 		}
 
 		ctx := services.NewContext(r.Context())
+		unlockQty := lockEntityQty(id)
+		defer unlockQty()
 		full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, id)
 		if err != nil {
 			return err
 		}
 
-		if body.UpdatedAt != nil && full.UpdatedAt.After(body.UpdatedAt.Add(2*time.Second)) {
+		if body.UpdatedAt != nil && full.UpdatedAt.After(body.UpdatedAt.Add(200*time.Millisecond)) {
 			return validate.NewRequestError(fmt.Errorf("该物品已被其他地方修改，请刷新后重试"), http.StatusConflict)
 		}
 
@@ -296,6 +301,9 @@ type trashShape struct {
 
 const trashPathV2 = "/data/trash2.json"
 
+// trash2Mu 串行化 trash2.json 的读-改-写（mark / PUT / purge 共用）。
+var trash2Mu sync.Mutex
+
 func (a *app) handleTrash2Get() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		data, err := os.ReadFile(trashPathV2)
@@ -329,8 +337,10 @@ func (a *app) handleTrash2Put() errchain.HandlerFunc {
 				out.Entries[id] = trashEntry{DeletedAt: time.Now().UTC()}
 			}
 		}
+		trash2Mu.Lock()
 		b, err := json.Marshal(out)
 		if err != nil {
+			trash2Mu.Unlock()
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
 		tmp := trashPathV2 + ".tmp"
@@ -339,6 +349,7 @@ func (a *app) handleTrash2Put() errchain.HandlerFunc {
 		} else {
 			_ = os.WriteFile(trashPathV2, b, 0o644)
 		}
+		trash2Mu.Unlock()
 		markedIDs := make([]string, 0, len(out.Entries))
 		for k := range out.Entries {
 			markedIDs = append(markedIDs, k)
@@ -348,6 +359,66 @@ func (a *app) handleTrash2Put() errchain.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(b)
 		return nil
+	}
+}
+
+// ---------------- trash2 增量标记（单个物品进/出回收站，合并写不覆盖其他条目） ----------------
+// POST /api/v1/ledger/trash2/mark   { "id": "<entityID>", "mark": true|false }
+
+func (a *app) handleTrash2Mark() errchain.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		var body struct {
+			ID   string `json:"id"`
+			Mark bool   `json:"mark"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
+			return validate.NewRequestError(err, http.StatusBadRequest)
+		}
+		id, err := uuid.Parse(body.ID)
+		if err != nil {
+			return validate.NewRequestError(fmt.Errorf("非法ID"), http.StatusBadRequest)
+		}
+		key := id.String()
+		ctx := services.NewContext(r.Context())
+		name := ""
+		if body.Mark {
+			if full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, id); err == nil {
+				name = full.Name
+			}
+		}
+
+		trash2Mu.Lock()
+		entries := trashShape{Entries: map[string]trashEntry{}}
+		if data, err := os.ReadFile(trashPathV2); err == nil && json.Valid(data) {
+			_ = json.Unmarshal(data, &entries)
+			if entries.Entries == nil {
+				entries.Entries = map[string]trashEntry{}
+			}
+		}
+		if body.Mark {
+			entries.Entries[key] = trashEntry{DeletedAt: time.Now().UTC(), Name: name}
+		} else {
+			if e, ok := entries.Entries[key]; ok {
+				name = e.Name
+			}
+			delete(entries.Entries, key)
+		}
+		b, err := json.Marshal(entries)
+		if err != nil {
+			trash2Mu.Unlock()
+			return validate.NewRequestError(err, http.StatusInternalServerError)
+		}
+		tmp := trashPathV2 + ".tmp"
+		if os.WriteFile(tmp, b, 0o644) == nil {
+			_ = os.Rename(tmp, trashPathV2)
+		} else {
+			_ = os.WriteFile(trashPathV2, b, 0o644)
+		}
+		trash2Mu.Unlock()
+
+		a.bus.Publish(eventbus.EventEntityMutation, eventbus.GroupMutationEvent{GID: ctx.GID})
+		auditLogG(ctx.GID.String(), "trash2.mark", map[string]any{"entityId": key, "name": name, "mark": body.Mark})
+		return server.JSON(w, http.StatusOK, map[string]any{"ok": true})
 	}
 }
 
@@ -373,6 +444,9 @@ func (a *app) handleTrash2Purge() errchain.HandlerFunc {
 		if !body.Confirm {
 			return validate.NewRequestError(fmt.Errorf("需要 confirm:true 才能物理删除"), http.StatusBadRequest)
 		}
+
+		trash2Mu.Lock()
+		defer trash2Mu.Unlock()
 
 		entries := trashShape{Entries: map[string]trashEntry{}}
 		if data, err := os.ReadFile(trashPathV2); err == nil && json.Valid(data) {
@@ -411,6 +485,7 @@ func (a *app) handleTrash2Purge() errchain.HandlerFunc {
 				errs = append(errs, idStr+": "+err.Error())
 				continue
 			}
+			embedDeleteItem(ctx.GID.String(), idStr)
 			delete(entries.Entries, idStr)
 			purged = append(purged, idStr)
 		}

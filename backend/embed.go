@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/hay-kot/httpkit/errchain"
 	"github.com/sysadminsmedia/homebox/backend/internal/core/services"
 )
@@ -183,12 +184,16 @@ type embedMatch struct {
 	Score  float64 `json:"score"`
 }
 
-func embedScoreAll(lib *embedLib, vec []float32, limit int) []embedMatch {
+// embedScoreAll 全库打分取 Top-N。alive 非 nil 时只保留仍存在的物品（死物品在截 Top-N 前过滤）。
+func embedScoreAll(lib *embedLib, vec []float32, limit int, alive map[string]bool) []embedMatch {
 	best := map[string]float64{} // 同一物品多个附件取最高分
 	for aid, b64 := range lib.E {
 		s := embedCosine(vec, embedDecode(b64))
 		item := lib.O[aid]
 		if item == "" || s < 0.5 {
+			continue
+		}
+		if alive != nil && !alive[item] {
 			continue
 		}
 		if cur, ok := best[item]; !ok || s > cur {
@@ -204,6 +209,66 @@ func embedScoreAll(lib *embedLib, vec []float32, limit int) []embedMatch {
 		out = out[:limit]
 	}
 	return out
+}
+
+// embedLiveItemIDs 查询库中映射的物品哪些仍存在（已删除物品的向量在截 Top-N 前过滤掉）。
+// 查询失败返回 nil——调用方按「不过滤」降级，不阻断匹配。
+func embedLiveItemIDs(gid string, lib *embedLib) map[string]bool {
+	db, err := gxOpen()
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	set := map[string]bool{}
+	for _, item := range lib.O {
+		set[item] = true
+	}
+	list := make([]string, 0, len(set))
+	for id := range set {
+		list = append(list, id)
+	}
+	alive := map[string]bool{}
+	const chunk = 200
+	for i := 0; i < len(list); i += chunk {
+		part := list[i:min(i+chunk, len(list))]
+		q := `SELECT id FROM entities WHERE group_entities=? AND id IN (` + strings.TrimSuffix(strings.Repeat("?,", len(part)), ",") + `)`
+		args := make([]any, 0, len(part)+1)
+		args = append(args, gid)
+		for _, id := range part {
+			args = append(args, id)
+		}
+		rows, err := db.Query(q, args...)
+		if err != nil {
+			return nil
+		}
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err == nil {
+				alive[id] = true
+			}
+		}
+		rows.Close()
+	}
+	return alive
+}
+
+// embedDeleteItem 物品被物理删除后同步清掉它的全部向量（按 O 映射反查附件）。
+func embedDeleteItem(gid, itemID string) {
+	embedMu.Lock()
+	defer embedMu.Unlock()
+	lib := embedLoad(gid)
+	changed := false
+	for aid, oid := range lib.O {
+		if oid == itemID {
+			delete(lib.O, aid)
+			delete(lib.E, aid)
+			changed = true
+		}
+	}
+	if changed {
+		lib.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+		_ = bizWriteJSON(embedPathFor(gid), lib)
+	}
 }
 
 func (a *app) handleEmbedMatch() errchain.HandlerFunc {
@@ -223,8 +288,9 @@ func (a *app) handleEmbedMatch() errchain.HandlerFunc {
 			return nil
 		}
 		embedMu.Lock()
-		lib := embedLoad(ctx.GID.String())
-		matches := embedScoreAll(lib, vec, 5)
+		gid := ctx.GID.String()
+		lib := embedLoad(gid)
+		matches := embedScoreAll(lib, vec, 5, embedLiveItemIDs(gid, lib))
 		embedMu.Unlock()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(w).Encode(map[string]any{"matches": matches})
@@ -239,6 +305,15 @@ func (a *app) handleEmbedRegister() errchain.HandlerFunc {
 		att := r.URL.Query().Get("att")
 		if item == "" || att == "" {
 			http.Error(w, "need item & att", http.StatusBadRequest)
+			return nil
+		}
+		itemID, err := uuid.Parse(item)
+		if err != nil {
+			http.Error(w, "bad item id", http.StatusBadRequest)
+			return nil
+		}
+		if _, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, itemID); err != nil {
+			http.Error(w, "物品不存在", http.StatusNotFound)
 			return nil
 		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 8<<20))

@@ -15,6 +15,9 @@ import (
 
 func (a *app) handleLedgerSyncFields() errchain.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) error {
+		if err := a.requireOwner(r); err != nil {
+			return err
+		}
 		ctx := services.NewContext(r.Context())
 
 		type def struct {
@@ -56,45 +59,49 @@ func (a *app) handleLedgerSyncFields() errchain.HandlerFunc {
 
 		updated := 0
 		for _, s := range items.Items {
-			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, s.ID)
-			if err != nil {
-				continue
-			}
-			fields := make([]repo.EntityFieldData, 0, len(full.Fields)+len(order))
-			have := map[string]bool{}
-			for _, f := range full.Fields {
-				have[f.Name] = true
-				if d, ok := defs[f.Name]; ok && d.Type != "" && f.Type != d.Type {
-					f.Type = d.Type
+			func() { // 闭包 + defer：panic 时实体锁也能释放
+				defer lockEntityQty(s.ID)()
+				full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, s.ID)
+				if err != nil {
+					return
 				}
-				fields = append(fields, f)
-			}
-			changed := false
-			for _, name := range order {
-				if have[name] {
-					continue
+				changed := false
+				fields := make([]repo.EntityFieldData, 0, len(full.Fields)+len(order))
+				have := map[string]bool{}
+				for _, f := range full.Fields {
+					have[f.Name] = true
+					if d, ok := defs[f.Name]; ok && d.Type != "" && f.Type != d.Type {
+						f.Type = d.Type
+						changed = true
+					}
+					fields = append(fields, f)
 				}
-				d := defs[name]
-				nf := repo.EntityFieldData{Name: name, Type: d.Type}
-				switch d.Type {
-				case "number":
-					nf.NumberValue = d.Num
-				case "boolean":
-					nf.BooleanValue = d.Bool
-				default:
-					nf.TextValue = d.Text
+				for _, name := range order {
+					if have[name] {
+						continue
+					}
+					d := defs[name]
+					nf := repo.EntityFieldData{Name: name, Type: d.Type}
+					switch d.Type {
+					case "number":
+						nf.NumberValue = d.Num
+					case "boolean":
+						nf.BooleanValue = d.Bool
+					default:
+						nf.TextValue = d.Text
+					}
+					fields = append(fields, nf)
+					changed = true
 				}
-				fields = append(fields, nf)
-				changed = true
-			}
-			if !changed {
-				continue
-			}
-			upd := entityUpdateFromFull(full)
-			upd.Fields = fields
-			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err == nil {
-				updated++
-			}
+				if !changed {
+					return
+				}
+				upd := entityUpdateFromFull(full)
+				upd.Fields = fields
+				if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err == nil {
+					updated++
+				}
+			}()
 		}
 
 		auditLogG(ctx.GID.String(), "ledger.sync_fields", map[string]any{"updated": updated, "fields": len(order)})

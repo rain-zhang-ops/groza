@@ -840,7 +840,8 @@ def main():
                         "\t\tr.Post(\"/biz/shipments\", chain.ToHandlerFunc(a.handleBizShipmentCreate(), userMW...))\n"
                         "\t\tr.Post(\"/biz/shipments/ship\", chain.ToHandlerFunc(a.handleBizShipmentShip(), userMW...))\n"
                         "\t\tr.Post(\"/biz/shipments/cancel\", chain.ToHandlerFunc(a.handleBizShipmentCancel(), userMW...))\n"
-                        "\t\tr.Post(\"/biz/shipments/undo\", chain.ToHandlerFunc(a.handleBizShipmentUndo(), userMW...))")
+                        "\t\tr.Post(\"/biz/shipments/undo\", chain.ToHandlerFunc(a.handleBizShipmentUndo(), userMW...))\n"
+                        "\t\tr.Post(\"/ledger/trash2/mark\", chain.ToHandlerFunc(a.handleTrash2Mark(), userMW...))")
         pub_anchor = 'r.Get("/qrcode", chain.ToHandlerFunc(v1Ctrl.HandleGenerateQRCode(), assetMW...))'
         pub_add = pub_anchor + '\n\t\tr.Get("/biz/images/{attachment}", chain.ToHandlerFunc(a.handleBizImage()))\n\t\tr.Get("/biz/images/{attachment}/{thumb}", chain.ToHandlerFunc(a.handleBizImage()))\n\t\tr.Get("/qr", chain.ToHandlerFunc(a.handleQRPublic()))'
         if anchor not in s or pub_anchor not in s:

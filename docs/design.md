@@ -640,3 +640,11 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **定制页残留**：tasks 说明文「直达台账」→「直达物品台账」；fields 版本历史来源标记显示层映射（api.put→保存、restore vN→恢复自 vN、migration→迁移），DB 原值不动。
 - **审计方法**：Playwright 逐页 dump main 区可见文本 + placeholder/title 属性（比读代码全），断言含「无裸露 i18n key」正则守卫。
 - **验证**：27 项断言全过（6 页面：含新词/无旧词/无裸 key）。
+
+### 架构与数据流加固：并发正确性专项（29）
+- **审查**（3 个子代理并行深读后端变更链/前端数据流/AI 与配置管线，60+ 文件）：核心结论是「读快照→内存改→整行覆写」+ 无锁 JSON 单据在任何并发下都会丢更新/丢单。
+- **后端 9 项**：① per-entity keyed 互斥锁（idempotency.go `lockEntityQty`），所有数量读-改-写路径持锁（入/出库及回滚、盘点 gx_adjust、字段 PATCH、sync-fields）；② 全局 bizMu 串行化单据 JSON 的 load-改-存（锁序 bizMu→lockEntityQty），发货确认/取消/撤销同锁，落盘失败走 revertOutboundItems 补偿，杜绝双扣窗口；③ 幂等键 `idemBegin` 把查-执行-存纳入临界区（双击并发不再双执行）；④ AI 识别解析失败不再写缓存（修复同图永久命中 `{}` 的缓存中毒）；⑤ template_sync 类型同步死代码修复（changed=true）；⑥ 向量库清理：purge/purgeAll 联动删向量 + embed-match 先校验活品再截 Top5；⑦ gx_config DSN `_txlock=immediate` + restore nil-map 防 panic；⑧ ui_options 原子写、sync-fields 加 requireOwner、PATCH 乐观锁 2s→200ms、embed-register 校验物品存在；⑨ 新增 trash2 增量端点 `POST /ledger/trash2/mark`（服务端合并写+广播 entity.mutation+审计），旧 PUT 保留。
+- **回归发现并修复**：entityUpdateFromFull 对无父级物品 nil 解引用 panic（panic 时显式 unlock 不执行 → 该实体锁永久死锁）；所有持锁循环改「闭包 + defer lockEntityQty(id)()」panic-safe 模式（biz 4 处、gx_adjust、template_sync）。
+- **前端 7 项**：① 离线队列补 X-Tenant（入队记集合、重放带头，修复跨集合写错库）+ flushAll in-flight 锁 + 4xx 丢弃 toast 并进死信键；② ledger 自建裸 WS 全删，统一接 use-server-events（tenant/退避/online/bfcache 全覆盖），wsOk 接 serverEventsConnected 共享 ref；③ 抑制窗口不再丢事件：窗口内标 pendingRefresh，6s 后补刷一次；④ 数量/undo/批量删除失败全部回滚本地态；⑤ 改名从全量 PUT 改「GET 最新→合并 name→PUT」（上游 PATCH 无 Name 字段，顺带修了改名清空资产号/库位的隐患）；⑥ trash2 前端迁增量 mark 端点，applyAgg 重建 trashed（他端恢复本端即同步）；⑦ 数量输入改非受控 `:value+@change`，修复 hideSoldOut 下输入 0 行被卸载导致修改静默丢失。
+- **验证**：HTTP 级——10 路并发出库库存精确 100→90→（回滚）→100；同幂等键双发只落一单只加一次；trash2 mark/unmark 往返正确。UI 级——台账渲染、WS 指示灯已连接、数量 +1/−1 恢复、标记删除/恢复全过。冒烟全绿。
+- **记账（未做）**：付费 AI 端点无限流；上游 /entities PUT 改数无审计；聚合接口 N+1；入库落盘失败的补偿（回滚价格字段）未做；ai-cache 无 GC。

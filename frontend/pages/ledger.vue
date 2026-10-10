@@ -42,6 +42,7 @@
   import MdiDotsHorizontal from "~icons/mdi/dots-horizontal";
   import MdiEyeOutline from "~icons/mdi/eye-outline";
   import MdiEyeOffOutline from "~icons/mdi/eye-off-outline";
+  import { onServerEvent, ServerEvent, serverEventsConnected } from "~/composables/use-server-events";
   definePageMeta({
     middleware: ["auth"],
   });
@@ -285,9 +286,17 @@
   async function mergeDupSoft(g: { name: string; rows: Row[] }) {
     const sortedRows = [...g.rows].sort((a, b) => String(b.updated || "").localeCompare(String(a.updated || "")));
     const extras = sortedRows.slice(1);
-    for (const r of extras) trashed[r.id] = true;
-    try { await persistTrash(); buzz(20); flash(`「${g.name}」保留 1 条，标记删除 ${extras.length} 条`); }
-    catch (e) { flash("操作失败：" + ((e as Error)?.message ?? String(e))); }
+    for (const r of extras) {
+      trashed[r.id] = true;
+      trashEntries[r.id] = { deletedAt: trashEntries[r.id]?.deletedAt || new Date().toISOString(), name: r.name };
+    }
+    try {
+      for (const r of extras) await markTrash(r.id, true);
+      buzz(20); flash(`「${g.name}」保留 1 条，标记删除 ${extras.length} 条`);
+    } catch (e) {
+      for (const r of extras) { delete trashed[r.id]; delete trashEntries[r.id]; }
+      flash("操作失败：" + ((e as Error)?.message ?? String(e)));
+    }
   }
 
   // ---------- 数据体检 ----------
@@ -498,12 +507,22 @@
     if (!nm) { flash("名称不能为空"); await load(); return; }
     saving[r.id] = true;
     try {
+      // 上游 PATCH /entities/{id} 不含 name（EntityPatch 无 Name 字段），改名只能 PUT 全量；
+      // 而 PUT 是整行替换（缺省字段会被清零），本地旧快照会覆盖他端并发修改，
+      // 故先拉最新实体，在其基础上只改名称再整体写回
+      const cur = await $fetch<Record<string, any>>(`/api/v1/entities/${r.id}`);
       const fresh = await $fetch<Record<string, any>>(`/api/v1/entities/${r.id}`, {
         method: "PUT",
         body: {
-          name: nm, entityTypeId: r.raw.entityType.id, fields: buildFields(r, {}),
-          notes: r.raw.notes || "", quantity: Number(r.qty),
-          parentId: r.raw.parent?.id ?? null, tagIds: (r.raw.tags || []).map((t: Record<string, any>) => t.id),
+          ...cur,
+          name: nm,
+          parentId: cur.parent?.id ?? null,
+          entityTypeId: cur.entityType?.id ?? r.raw.entityType.id,
+          tagIds: (cur.tags || []).map((t: Record<string, any>) => t.id),
+          fields: (cur.fields || []).map((f: Record<string, any>) => ({
+            id: f.id, name: f.name, type: f.type,
+            textValue: f.textValue ?? "", numberValue: f.numberValue ?? 0, booleanValue: !!f.booleanValue,
+          })),
         },
       });
       r.raw = { ...r.raw, ...fresh };
@@ -702,7 +721,7 @@
     if (!c || !c.match) return;
     const row = rowById(c.match.id);
     if (!row) { flash("该物品已不存在"); return; }
-    await step(row, 1);
+    if (!(await step(row, 1))) return;
     try {
       const form = new FormData();
       form.append("file", c.blob, "ai.jpg");
@@ -917,6 +936,8 @@
       colors: agg.uiOptions?.colors || [], materials: agg.uiOptions?.materials || [], required: agg.uiOptions?.required || [],
     };
     for (const k of Object.keys(trashEntries)) delete trashEntries[k];
+    // 回收站状态按服务端数据整体重建（只增不清会导致他端「恢复」后本端仍显示已标记）
+    for (const k of Object.keys(trashed)) delete trashed[k];
     const ent = agg.trash?.entries || {};
     for (const id of Object.keys(ent)) { trashEntries[id] = ent[id]; trashed[id] = true; }
     rows.value = (agg.items as Array<Record<string, any>>).map(e => toRow({
@@ -1254,10 +1275,6 @@
     syncOq();
     window.addEventListener("hb:offline-queue", syncOq);
     window.addEventListener("scroll", onScrollLoadMore, { passive: true });
-    connectWS();
-    window.addEventListener("pagehide", onWSPageHide);
-    window.addEventListener("pageshow", onWSPageShow);
-    document.addEventListener("visibilitychange", onWSVisChange);
     try { bigFont.value = localStorage.getItem("groza.bigfont") === "1"; applyBigFont(); } catch (_e) { /* ignore */ }
     const savedCols = localStorage.getItem("hb.ledger.cols");
     const savedVm = localStorage.getItem("hb.ledger.viewmode");
@@ -1281,13 +1298,10 @@
   onBeforeUnmount(() => {
     window.removeEventListener("hb:offline-queue", syncOq);
     window.removeEventListener("scroll", onScrollLoadMore);
-    window.removeEventListener("pagehide", onWSPageHide);
-    window.removeEventListener("pageshow", onWSPageShow);
-    document.removeEventListener("visibilitychange", onWSVisChange);
     closeScan();
     if (notifyTimer) window.clearInterval(notifyTimer);
-    closeWSForFreeze();
     if (wsRefresh) window.clearTimeout(wsRefresh);
+    if (wsDeferred) window.clearTimeout(wsDeferred);
     if (aiConfirm.value) { URL.revokeObjectURL(aiConfirm.value.url); aiConfirm.value = null; }
   });
 
@@ -1305,12 +1319,21 @@
     if (!u) { flash("没有可撤销的操作"); return; }
     for (const it of u.items) {
       if (it.field === "qty") {
+        const cur = it.row.qty;
         it.row.qty = it.prev;
-        await $fetch(`/api/v1/entities/${it.row.id}`, { method: "PATCH", body: { quantity: Number(it.prev) } });
+        try {
+          await $fetch(`/api/v1/entities/${it.row.id}`, { method: "PATCH", body: { quantity: Number(it.prev) } });
+        } catch (e) {
+          it.row.qty = cur;
+          flash("撤销失败：" + ((e as Error)?.message ?? String(e)));
+          return;
+        }
       } else {
         const name = it.field === "purchase" ? "进价" : it.field === "sell" ? "售价" : "安全库存";
+        const cur = it.row[it.field];
         it.row[it.field] = it.prev;
-        await putFields(it.row, { [name]: it.prev ?? 0 });
+        const ok = await putFields(it.row, { [name]: it.prev ?? 0 });
+        if (!ok) { it.row[it.field] = cur; return; }
       }
     }
     flash("已撤销：" + u.label);
@@ -1383,32 +1406,52 @@
   function snapshot(r: Row) {
     preEdit[r.id] = { qty: r.qty, purchase: r.purchase, sell: r.sell, safety: r.safety };
   }
-  async function patchQty(r: Row) {
+  async function patchQty(r: Row): Promise<boolean> {
     saving[r.id] = true;
     try {
       await $fetch(`/api/v1/entities/${r.id}`, { method: "PATCH", body: { quantity: Number(r.qty) } });
+      return true;
     } catch (e) {
       flash("保存失败：" + ((e as Error)?.message ?? String(e)));
+      return false;
     } finally {
       saving[r.id] = false;
     }
   }
-  async function onQtyChange(r: Row) {
-    const q = Number(r.qty);
-    if (!Number.isFinite(q) || q < 0) { flash("数量无效"); return; }
-    const prev = preEdit[r.id]?.qty;
+  // 数量输入是非受控（:value + @change 读 el.value 提交）：v-model 即时写 r.qty 会触发
+  // hideSoldOut 过滤/排序，导致行在 @change 前被卸载、修改丢失
+  async function onQtyChange(r: Row, e?: Event) {
+    const el = (e?.target as HTMLInputElement | null) ?? null;
+    const q = Number(el ? el.value : r.qty);
+    if (!Number.isFinite(q) || q < 0) {
+      flash("数量无效");
+      if (el) el.value = String(r.qty);
+      return;
+    }
+    if (q === r.qty) { if (el) el.value = String(r.qty); return; }
+    const prev = preEdit[r.id]?.qty ?? r.qty;
     r.qty = q;
+    const ok = await patchQty(r);
+    if (!ok) {
+      r.qty = prev;
+      if (el) el.value = String(prev);
+      return;
+    }
     recordUndo("数量", [{ row: r, field: "qty", prev }]);
-    await patchQty(r);
     markSaved(r.id);
     flash(`已保存：${r.name} → ${q}`);
   }
-  async function step(r: Row, d: number) {
+  async function step(r: Row, d: number): Promise<boolean> {
     const prev = r.qty;
     r.qty = Math.max(0, Number(r.qty || 0) + d);
+    const ok = await patchQty(r);
+    if (!ok) {
+      r.qty = prev;
+      return false;
+    }
     recordUndo("数量", [{ row: r, field: "qty", prev }]);
-    await patchQty(r);
     markSaved(r.id);
+    return true;
   }
   async function setPrice(r: Row, which: "purchase" | "sell") {
     const v = num(which === "purchase" ? r.purchase : r.sell);
@@ -1597,35 +1640,47 @@
     if (isNaN(t)) return null;
     return Math.max(0, Math.floor((Date.now() - t) / 86400000));
   }
-  async function persistTrash() {
-    const entries: Record<string, { deletedAt: string; name?: string }> = {};
-    for (const id of Object.keys(trashed).filter(k => trashed[k])) {
-      const prev = trashEntries[id];
-      entries[id] = {
-        deletedAt: prev?.deletedAt || new Date().toISOString(),
-        name: rows.value.find(r => r.id === id)?.name || prev?.name,
-      };
-      trashEntries[id] = entries[id];
-    }
-    await $fetch("/api/v1/trash2", { method: "PUT", body: { entries } });
+  // trash2 增量标记：逐条 POST，服务端合并写并广播 entity.mutation（旧整表 PUT 已废弃）
+  async function markTrash(id: string, mark: boolean) {
+    await $fetch("/api/v1/ledger/trash2/mark", { method: "POST", body: { id, mark } });
   }
   async function toggleTrash(r: Row) {
     const mark = !trashed[r.id];
-    if (mark) trashed[r.id] = true; else delete trashed[r.id];
+    const prevEntry = trashEntries[r.id];
+    if (mark) {
+      trashed[r.id] = true;
+      trashEntries[r.id] = { deletedAt: prevEntry?.deletedAt || new Date().toISOString(), name: r.name };
+    } else {
+      delete trashed[r.id];
+      delete trashEntries[r.id];
+    }
     try {
-      await persistTrash();
+      await markTrash(r.id, mark);
       flash((mark ? "已标记删除：" : "已恢复：") + r.name);
     } catch (e) {
-      if (mark) delete trashed[r.id]; else trashed[r.id] = true;
+      if (mark) { delete trashed[r.id]; delete trashEntries[r.id]; }
+      else { trashed[r.id] = true; if (prevEntry) trashEntries[r.id] = prevEntry; }
       flash("操作失败：" + ((e as Error)?.message ?? String(e)));
     }
   }
   async function batchTrash() {
     const list = selectedRows.value;
     if (!list.length) return;
-    for (const r of list) trashed[r.id] = true;
-    try { await persistTrash(); flash(`已标记删除 ${list.length} 款`); clearSel(); }
-    catch (e) { flash("操作失败：" + ((e as Error)?.message ?? String(e))); }
+    const prev = list.map(r => ({ id: r.id, wasTrashed: !!trashed[r.id], entry: trashEntries[r.id] }));
+    for (const r of list) {
+      trashed[r.id] = true;
+      trashEntries[r.id] = { deletedAt: trashEntries[r.id]?.deletedAt || new Date().toISOString(), name: r.name };
+    }
+    try {
+      for (const r of list) await markTrash(r.id, true);
+      flash(`已标记删除 ${list.length} 款`); clearSel();
+    } catch (e) {
+      for (const p of prev) {
+        if (p.wasTrashed) trashed[p.id] = true; else delete trashed[p.id];
+        if (p.entry) trashEntries[p.id] = p.entry; else delete trashEntries[p.id];
+      }
+      flash("操作失败：" + ((e as Error)?.message ?? String(e)));
+    }
   }
   function dataMatch(r: Row): boolean {
     switch (dataFilter.value) {
@@ -1936,15 +1991,15 @@
   const oq = useOfflineQueue();
   const offline = ref(false);
   const pendingN = ref(0);
-  const wsOk = ref(false);
-  let ws: WebSocket | null = null;
-  let wsRetry: number | undefined;
+  // 统一 WS 连接（use-server-events）：tenant 参数、鉴权、指数退避、bfcache/visibility/online 处理都在 composable 内
+  const wsOk = serverEventsConnected;
   let wsRefresh: number | undefined;
+  let wsDeferred: number | undefined;
   function syncOq() {
     offline.value = oq.isOffline();
     pendingN.value = oq.pending();
   }
-  // 本页写操作时间戳：WS 回声（自己改的也会广播回来）在窗口期内跳过刷新
+  // 本页写操作时间戳：WS 回声（自己改的也会广播回来）在窗口期内不立即刷新
   let lastLocalEdit = 0;
   function noteLocalEdit() { lastLocalEdit = Date.now(); }
   // 静默增量刷新：不碰 loading/滚动位置/已加载条数，按 id 合并变更（他人编辑实时可见）
@@ -1957,47 +2012,28 @@
       }
     } catch (_e) { /* 静默失败，下次事件再试 */ }
   }
-  function connectWS() {
-    try {
-      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-      ws = new WebSocket(`${scheme}//${location.host}/api/v1/ws/events`);
-      ws.onopen = () => { wsOk.value = true; };
-      ws.onclose = () => {
-        wsOk.value = false;
-        wsRetry = window.setTimeout(connectWS, 5000);
-      };
-      ws.onmessage = (ev) => {
-        let d: any;
-        try { d = JSON.parse(String(ev.data)); } catch (_e) { return; }
-        const type = String(d?.event || d?.type || "");
-        if (type.includes("mutation")) {
-          if (Date.now() - lastLocalEdit < 6000) return; // 自己的编辑：本地已更新，跳过
-          window.clearTimeout(wsRefresh);
-          wsRefresh = window.setTimeout(() => { void refreshSilent(); }, 800);
-        }
-      };
-      ws.onerror = () => { wsOk.value = false; };
-    } catch (_e) { /* 忽略 */ }
-  }
-  function closeWSForFreeze() {
-    // 页面进 bfcache/卸载前主动关闭，避免浏览器强杀并在控制台报错
-    if (wsRetry) { window.clearTimeout(wsRetry); wsRetry = undefined; }
-    if (ws) {
-      ws.onopen = null; ws.onclose = null; ws.onerror = null; ws.onmessage = null;
-      try { ws.close(); } catch (_e) { /* 忽略 */ }
-      ws = null;
+  let pendingRefresh = false;
+  function onServerMutation() {
+    if (Date.now() - lastLocalEdit < 6000) {
+      // 抑制窗口内的事件不丢：记待刷，6s 防抖后补刷一次（多次命中只补一次）
+      if (!pendingRefresh) {
+        pendingRefresh = true;
+        wsDeferred = window.setTimeout(() => {
+          wsDeferred = undefined;
+          pendingRefresh = false;
+          void refreshSilent();
+        }, 6000);
+      }
+      return;
     }
-    wsOk.value = false;
+    window.clearTimeout(wsRefresh);
+    wsRefresh = window.setTimeout(() => { void refreshSilent(); }, 800);
   }
-  function resumeWS() {
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-    ws = null;
-    if (wsRetry) { window.clearTimeout(wsRetry); wsRetry = undefined; }
-    connectWS();
-  }
-  function onWSPageHide() { closeWSForFreeze(); }
-  function onWSPageShow(e: PageTransitionEvent) { if (e.persisted) resumeWS(); }
-  function onWSVisChange() { if (document.visibilityState === "visible") resumeWS(); }
+  onServerEvent(ServerEvent.EntityMutation, onServerMutation);
+  onServerEvent(ServerEvent.TagMutation, onServerMutation);
+  onServerEvent(ServerEvent.UserMutation, onServerMutation);
+  onServerEvent(ServerEvent.ExportMutation, onServerMutation);
+  onServerEvent(ServerEvent.ImportMutation, onServerMutation);
 
   async function batchLoc() {
     if (!batch.loc) { flash("选分类"); return; }
@@ -2416,7 +2452,7 @@
             <div class="mt-3 flex items-center gap-2">
               <div class="flex shrink-0 items-center overflow-hidden rounded-xl border">
                 <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
-                <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+                <input :value="r.qty" inputmode="numeric" type="number" min="0" class="h-11 w-16 border-x bg-background text-center text-xl font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r, $event)" />
                 <button class="grid h-11 w-12 place-items-center text-2xl transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
               </div>
               <template v-if="!countMode">
@@ -2469,7 +2505,7 @@
           </div>
           <div class="flex shrink-0 items-center overflow-hidden rounded-lg border">
             <button class="grid h-9 w-9 place-items-center text-lg transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,-1)">−</button>
-            <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="h-9 w-12 border-x bg-background text-center text-sm font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+            <input :value="r.qty" inputmode="numeric" type="number" min="0" class="h-9 w-12 border-x bg-background text-center text-sm font-semibold tabular-nums outline-none focus:ring-2 focus:ring-inset focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r, $event)" />
             <button class="grid h-9 w-9 place-items-center text-lg transition active:bg-muted disabled:opacity-40" :disabled="saving[r.id]" @click="step(r,1)">＋</button>
           </div>
         </div>
@@ -2545,7 +2581,7 @@
               <td :class="cellPad">
                 <div class="flex items-center justify-center gap-1">
                   <button class="h-7 w-7 rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" @click="step(r, -1)">−</button>
-                  <input v-model.number="r.qty" inputmode="numeric" type="number" min="0" class="w-16 rounded-md border bg-background px-2 py-1 text-center tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r)" />
+                  <input :value="r.qty" inputmode="numeric" type="number" min="0" class="w-16 rounded-md border bg-background px-2 py-1 text-center tabular-nums outline-none focus:ring-2 focus:ring-ring/40" @focus="snapshot(r)" @change="onQtyChange(r, $event)" />
                   <button class="h-7 w-7 rounded-md border transition hover:bg-muted active:scale-90 disabled:opacity-40" :disabled="saving[r.id]" @click="step(r, 1)">+</button>
                 </div>
               </td>

@@ -1,5 +1,5 @@
 import { useViewPreferences } from "./use-preferences";
-import { watch } from "vue";
+import { ref, watch } from "vue";
 
 // Groza 定制版（覆盖上游同名文件）：
 // 在上游断线重连基础上补齐页面生命周期处理——
@@ -27,6 +27,9 @@ let lifecycleSetup = false;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 let messageHandler: ((m: EventMessage) => void) | null = null;
+
+// 连接状态（模块级共享）：页面指示灯（如台账顶栏 wsOk）直接读这个 ref
+export const serverEventsConnected = ref(false);
 
 const RECONNECT_BASE_DELAY_MS = 1000;
 const RECONNECT_MAX_DELAY_MS = 30000;
@@ -105,6 +108,7 @@ function connect() {
   ws.onopen = () => {
     reconnectAttempts = 0;
     clearReconnectTimer();
+    serverEventsConnected.value = true;
     console.debug("connected to server");
   };
 
@@ -113,6 +117,7 @@ function connect() {
     if (socket === ws) {
       socket = null;
     }
+    serverEventsConnected.value = false;
     scheduleReconnect();
   };
 
@@ -145,6 +150,7 @@ function closeForFreeze() {
   // 页面即将被冻结（bfcache）或卸载：主动关闭，浏览器就无需代劳，
   // 也不会在控制台打 "Page entered Back-Forward Cache"。
   clearReconnectTimer();
+  serverEventsConnected.value = false;
   if (socket) {
     socket.onopen = null;
     socket.onclose = null;

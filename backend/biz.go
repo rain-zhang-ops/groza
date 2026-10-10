@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -38,6 +39,10 @@ const (
 	imgIndexPath  = bizDir + "/img_index.json"
 	bizTimeLayout = "2006-01-02T15:04:05.000000"
 )
+
+// bizMu 串行化所有「load-modify-save 单据文件」临界区（intakes/outbounds/shipments 共用一把，
+// 扣库存与落单在同一临界区，杜绝丢单与双扣窗口）。锁序：bizMu → lockEntityQty，不得反向。
+var bizMu sync.Mutex
 
 type intakeItem struct {
 	EntityID string  `json:"entityId"`
@@ -142,18 +147,22 @@ func (a *app) imgFromAttachments(ctx context.Context, gid, eid uuid.UUID) string
 
 func entityUpdateFromFull(full repo.EntityOut) repo.EntityUpdate {
 	upd := repo.EntityUpdate{
-		ParentID:     full.Parent.ID,
-		ID:           full.ID,
-		AssetID:      full.AssetID,
-		Name:         full.Name,
-		Description:  full.Description,
-		Quantity:     full.Quantity,
-		Insured:      full.Insured,
-		Archived:     full.Archived,
-		EntityTypeID: full.EntityType.ID,
-		TagIDs:       tagIDsOf(full.Tags),
-		Notes:        full.Notes,
-		Fields:       full.Fields,
+		ID:          full.ID,
+		AssetID:     full.AssetID,
+		Name:        full.Name,
+		Description: full.Description,
+		Quantity:    full.Quantity,
+		Insured:     full.Insured,
+		Archived:    full.Archived,
+		TagIDs:      tagIDsOf(full.Tags),
+		Notes:       full.Notes,
+		Fields:      full.Fields,
+	}
+	if full.Parent != nil {
+		upd.ParentID = full.Parent.ID
+	}
+	if full.EntityType != nil {
+		upd.EntityTypeID = full.EntityType.ID
 	}
 	upd.SyncChildEntityLocations = full.SyncChildEntityLocations
 	return upd
@@ -192,11 +201,15 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 			return validate.NewRequestError(fmt.Errorf("没有入库明细"), http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
 
 		ctx := services.NewContext(r.Context())
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		ii := &intake{
 			ID:       bizRandID(),
 			TS:       bizNow(),
@@ -206,46 +219,49 @@ func (a *app) handleBizIntakeCreate() errchain.HandlerFunc {
 		var errs []string
 
 		for _, it := range body.Items {
-			eid, err := uuid.Parse(it.EntityID)
-			if err != nil || it.Count <= 0 {
-				errs = append(errs, "明细无效: "+it.EntityID)
-				continue
-			}
-			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-			if err != nil {
-				errs = append(errs, "物品不存在: "+it.EntityID)
-				continue
-			}
-			newQty := full.Quantity + it.Count
-			upd := entityUpdateFromFull(full)
-			upd.Quantity = newQty
-			prevCost, prevSell := 0, 0
-			hadCost, hadSell := false, false
-			if it.Cost > 0 || it.Sell > 0 {
-				nf := make([]repo.EntityFieldData, 0, len(full.Fields))
-				for _, f := range full.Fields {
-					if f.Type == "number" {
-						if f.Name == "进价" && it.Cost > 0 {
-							prevCost, hadCost = f.NumberValue, true
-							f.NumberValue = int(it.Cost)
-						} else if f.Name == "售价" && it.Sell > 0 {
-							prevSell, hadSell = f.NumberValue, true
-							f.NumberValue = int(it.Sell)
-						}
-					}
-					nf = append(nf, f)
+			func() { // 闭包 + defer：panic 时实体锁也能释放
+				eid, err := uuid.Parse(it.EntityID)
+				if err != nil || it.Count <= 0 {
+					errs = append(errs, "明细无效: "+it.EntityID)
+					return
 				}
-				upd.Fields = nf
-			}
-			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-				errs = append(errs, "更新失败: "+full.Name)
-				continue
-			}
-			ii.Items = append(ii.Items, intakeItem{
-				EntityID: it.EntityID, Name: full.Name, Count: it.Count, Cost: it.Cost, Sell: it.Sell,
-				PrevCost: prevCost, HadCost: hadCost, PrevSell: prevSell, HadSell: hadSell,
-			})
-			ii.TotalCost += it.Cost * it.Count
+				defer lockEntityQty(eid)()
+				full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+				if err != nil {
+					errs = append(errs, "物品不存在: "+it.EntityID)
+					return
+				}
+				newQty := full.Quantity + it.Count
+				upd := entityUpdateFromFull(full)
+				upd.Quantity = newQty
+				prevCost, prevSell := 0, 0
+				hadCost, hadSell := false, false
+				if it.Cost > 0 || it.Sell > 0 {
+					nf := make([]repo.EntityFieldData, 0, len(full.Fields))
+					for _, f := range full.Fields {
+						if f.Type == "number" {
+							if f.Name == "进价" && it.Cost > 0 {
+								prevCost, hadCost = f.NumberValue, true
+								f.NumberValue = int(it.Cost)
+							} else if f.Name == "售价" && it.Sell > 0 {
+								prevSell, hadSell = f.NumberValue, true
+								f.NumberValue = int(it.Sell)
+							}
+						}
+						nf = append(nf, f)
+					}
+					upd.Fields = nf
+				}
+				if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+					errs = append(errs, "更新失败: "+full.Name)
+					return
+				}
+				ii.Items = append(ii.Items, intakeItem{
+					EntityID: it.EntityID, Name: full.Name, Count: it.Count, Cost: it.Cost, Sell: it.Sell,
+					PrevCost: prevCost, HadCost: hadCost, PrevSell: prevSell, HadSell: hadSell,
+				})
+				ii.TotalCost += it.Cost * it.Count
+			}()
 		}
 
 		if len(ii.Items) == 0 {
@@ -291,9 +307,13 @@ func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		is := loadIntakes()
 		idx := -1
 		for i, v := range is {
@@ -313,39 +333,42 @@ func (a *app) handleBizIntakeRollback() errchain.HandlerFunc {
 		ctx := services.NewContext(r.Context())
 		var errs []string
 		for _, it := range t.Items {
-			eid, err := uuid.Parse(it.EntityID)
-			if err != nil {
-				continue
-			}
-			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-			if err != nil {
-				errs = append(errs, "物品不存在，跳过: "+it.Name)
-				continue
-			}
-			newQty := full.Quantity - it.Count
-			if newQty < 0 {
-				newQty = 0
-			}
-			upd := entityUpdateFromFull(full)
-			upd.Quantity = newQty
-			if it.HadCost || it.HadSell {
-				nf := make([]repo.EntityFieldData, 0, len(full.Fields))
-				for _, f := range full.Fields {
-					if f.Type == "number" {
-						if f.Name == "进价" && it.HadCost {
-							f.NumberValue = it.PrevCost
-						} else if f.Name == "售价" && it.HadSell {
-							f.NumberValue = it.PrevSell
-						}
-					}
-					nf = append(nf, f)
+			func() { // 闭包 + defer：panic 时实体锁也能释放
+				eid, err := uuid.Parse(it.EntityID)
+				if err != nil {
+					return
 				}
-				upd.Fields = nf
-			}
-			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-				errs = append(errs, "更新失败: "+it.Name)
-				continue
-			}
+				defer lockEntityQty(eid)()
+				full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+				if err != nil {
+					errs = append(errs, "物品不存在，跳过: "+it.Name)
+					return
+				}
+				newQty := full.Quantity - it.Count
+				if newQty < 0 {
+					newQty = 0
+				}
+				upd := entityUpdateFromFull(full)
+				upd.Quantity = newQty
+				if it.HadCost || it.HadSell {
+					nf := make([]repo.EntityFieldData, 0, len(full.Fields))
+					for _, f := range full.Fields {
+						if f.Type == "number" {
+							if f.Name == "进价" && it.HadCost {
+								f.NumberValue = it.PrevCost
+							} else if f.Name == "售价" && it.HadSell {
+								f.NumberValue = it.PrevSell
+							}
+						}
+						nf = append(nf, f)
+					}
+					upd.Fields = nf
+				}
+				if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+					errs = append(errs, "更新失败: "+it.Name)
+					return
+				}
+			}()
 		}
 		t.RolledBack = true
 		is[idx] = t
@@ -471,33 +494,37 @@ type outboundBody struct {
 
 // applyOutbound 出库核心：扣库存、落出库单、审计、单据同步。
 // 发货确认与原出库创建共用。status 为建议 HTTP 状态码（400 明细全败 / 500 落盘失败）。
+// 调用方必须持有 bizMu；落盘失败时把已扣库存逐项加回，不留「扣了库存但没单」的半状态。
 func (a *app) applyOutbound(ctx services.Context, reason, note string, items []outboundItem) (*outbound, []string, int, error) {
 	ob := &outbound{ID: bizRandID(), TS: bizNow(), Reason: strings.TrimSpace(reason), Note: strings.TrimSpace(note)}
 	var errs []string
 
 	for _, it := range items {
-		eid, err := uuid.Parse(it.EntityID)
-		if err != nil || it.Count <= 0 {
-			errs = append(errs, "明细无效: "+it.EntityID)
-			continue
-		}
-		full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-		if err != nil {
-			errs = append(errs, "物品不存在: "+it.EntityID)
-			continue
-		}
-		newQty := full.Quantity - it.Count
-		if newQty < 0 {
-			errs = append(errs, fmt.Sprintf("库存不足(%g)：%s", full.Quantity, full.Name))
-			continue
-		}
-		upd := entityUpdateFromFull(full)
-		upd.Quantity = newQty
-		if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-			errs = append(errs, "更新失败: "+full.Name)
-			continue
-		}
-		ob.Items = append(ob.Items, outboundItem{EntityID: it.EntityID, Name: full.Name, Count: it.Count})
+		func() { // 闭包 + defer：panic 时实体锁也能释放
+			eid, err := uuid.Parse(it.EntityID)
+			if err != nil || it.Count <= 0 {
+				errs = append(errs, "明细无效: "+it.EntityID)
+				return
+			}
+			defer lockEntityQty(eid)()
+			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+			if err != nil {
+				errs = append(errs, "物品不存在: "+it.EntityID)
+				return
+			}
+			newQty := full.Quantity - it.Count
+			if newQty < 0 {
+				errs = append(errs, fmt.Sprintf("库存不足(%g)：%s", full.Quantity, full.Name))
+				return
+			}
+			upd := entityUpdateFromFull(full)
+			upd.Quantity = newQty
+			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+				errs = append(errs, "更新失败: "+full.Name)
+				return
+			}
+			ob.Items = append(ob.Items, outboundItem{EntityID: it.EntityID, Name: full.Name, Count: it.Count})
+		}()
 	}
 
 	if len(ob.Items) == 0 {
@@ -507,6 +534,7 @@ func (a *app) applyOutbound(ctx services.Context, reason, note string, items []o
 	os_ := loadOutbounds()
 	os_ = append([]outbound{*ob}, os_...)
 	if err := saveOutbounds(os_); err != nil {
+		a.revertOutboundItems(ctx, ob.Items, 1)
 		return nil, errs, http.StatusInternalServerError, err
 	}
 	eids := make([]string, 0, len(ob.Items))
@@ -537,11 +565,15 @@ func (a *app) handleBizOutboundCreate() errchain.HandlerFunc {
 			return validate.NewRequestError(fmt.Errorf("没有出库明细"), http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
 
 		ctx := services.NewContext(r.Context())
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		ob, errs, status, err := a.applyOutbound(ctx, body.Reason, body.Note, body.Items)
 		if err != nil {
 			return validate.NewRequestError(err, status)
@@ -557,7 +589,7 @@ type outboundRollbackBody struct {
 }
 
 // applyOutboundRollback 回滚核心：库存加回、标记已回滚、审计、单据同步。
-// 出库回滚与发货撤销共用。
+// 出库回滚与发货撤销共用。调用方必须持有 bizMu；落盘失败时把已加回的库存再扣掉，不留半状态。
 func (a *app) applyOutboundRollback(ctx services.Context, outboundID string) (*outbound, []string, int, error) {
 	os_ := loadOutbounds()
 	idx := -1
@@ -577,25 +609,29 @@ func (a *app) applyOutboundRollback(ctx services.Context, outboundID string) (*o
 
 	var errs []string
 	for _, it := range t.Items {
-		eid, err := uuid.Parse(it.EntityID)
-		if err != nil {
-			continue
-		}
-		full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-		if err != nil {
-			errs = append(errs, "物品不存在，跳过: "+it.Name)
-			continue
-		}
-		upd := entityUpdateFromFull(full)
-		upd.Quantity = full.Quantity + it.Count
-		if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-			errs = append(errs, "更新失败: "+it.Name)
-			continue
-		}
+		func() { // 闭包 + defer：panic 时实体锁也能释放
+			eid, err := uuid.Parse(it.EntityID)
+			if err != nil {
+				return
+			}
+			defer lockEntityQty(eid)()
+			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+			if err != nil {
+				errs = append(errs, "物品不存在，跳过: "+it.Name)
+				return
+			}
+			upd := entityUpdateFromFull(full)
+			upd.Quantity = full.Quantity + it.Count
+			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+				errs = append(errs, "更新失败: "+it.Name)
+				return
+			}
+		}()
 	}
 	t.RolledBack = true
 	os_[idx] = t
 	if err := saveOutbounds(os_); err != nil {
+		a.revertOutboundItems(ctx, t.Items, -1)
 		return nil, errs, http.StatusInternalServerError, err
 	}
 	eids := make([]string, 0, len(t.Items))
@@ -605,6 +641,28 @@ func (a *app) applyOutboundRollback(ctx services.Context, outboundID string) (*o
 	auditLogG(ctx.GID.String(), "outbound.rollback", map[string]any{"outboundId": t.ID, "items": len(t.Items), "entityIds": eids})
 	gxMarkRolledBack(ctx.GID.String(), "outbound", t.ID)
 	return &t, errs, http.StatusOK, nil
+}
+
+// revertOutboundItems 落盘失败的库存补偿（best-effort，逐项拿实体锁）：
+// sign=+1 把已扣的加回（出库落盘失败）；sign=-1 把已加回的再扣掉（回滚落盘失败）。
+func (a *app) revertOutboundItems(ctx services.Context, items []outboundItem, sign float64) {
+	for _, it := range items {
+		func() { // 闭包 + defer：panic 时实体锁也能释放
+			eid, err := uuid.Parse(it.EntityID)
+			if err != nil {
+				return
+			}
+			defer lockEntityQty(eid)()
+			if full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid); err == nil {
+				upd := entityUpdateFromFull(full)
+				upd.Quantity = full.Quantity + sign*it.Count
+				if upd.Quantity < 0 {
+					upd.Quantity = 0
+				}
+				_, _ = a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd)
+			}
+		}()
+	}
 }
 
 func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
@@ -617,11 +675,15 @@ func (a *app) handleBizOutboundRollback() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
 
 		ctx := services.NewContext(r.Context())
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		t, errs, status, err := a.applyOutboundRollback(ctx, body.OutboundID)
 		if err != nil {
 			return validate.NewRequestError(err, status)

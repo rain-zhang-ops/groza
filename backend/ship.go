@@ -81,6 +81,8 @@ func (a *app) handleBizShipmentCreate() errchain.HandlerFunc {
 			return validate.NewRequestError(fmt.Errorf("没有发货明细"), http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
@@ -111,9 +113,12 @@ func (a *app) handleBizShipmentCreate() errchain.HandlerFunc {
 			return validate.NewRequestError(fmt.Errorf("没有有效明细：%s", strings.Join(errs, "；")), http.StatusBadRequest)
 		}
 
+		bizMu.Lock()
 		ss := loadShipments()
 		ss = append([]shipment{*sh}, ss...)
-		if err := saveShipments(ss); err != nil {
+		err := saveShipments(ss)
+		bizMu.Unlock()
+		if err != nil {
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
 		auditLogG(ctx.GID.String(), "shipment.create", map[string]any{"shipmentId": sh.ID, "items": len(sh.Items), "party": sh.Party})
@@ -147,10 +152,14 @@ func (a *app) handleBizShipmentShip() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
 
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		ss := loadShipments()
 		idx := findShipment(ss, body.ID)
 		if idx < 0 {
@@ -176,6 +185,10 @@ func (a *app) handleBizShipmentShip() errchain.HandlerFunc {
 		sh.OutboundID = ob.ID
 		ss[idx] = sh
 		if err := saveShipments(ss); err != nil {
+			// 出库已落库而发货单落盘失败：补偿回滚出库（库存加回），不留「扣了库存但单还是待发货」的半状态
+			if _, _, _, rbErr := a.applyOutboundRollback(ctx, ob.ID); rbErr != nil {
+				auditLogG(ctx.GID.String(), "shipment.ship_compensate_failed", map[string]any{"shipmentId": sh.ID, "outboundId": ob.ID, "error": rbErr.Error()})
+			}
 			return validate.NewRequestError(err, http.StatusInternalServerError)
 		}
 		auditLogG(ctx.GID.String(), "shipment.ship", map[string]any{"shipmentId": sh.ID, "outboundId": ob.ID, "items": len(ob.Items)})
@@ -195,10 +208,14 @@ func (a *app) handleBizShipmentCancel() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
 
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		ss := loadShipments()
 		idx := findShipment(ss, body.ID)
 		if idx < 0 {
@@ -231,10 +248,14 @@ func (a *app) handleBizShipmentUndo() errchain.HandlerFunc {
 			return validate.NewRequestError(err, http.StatusBadRequest)
 		}
 		key := idemKey(r)
+		unlockIdem := idemBegin(key)
+		defer unlockIdem()
 		if cached, ok := idemLookup(key); ok {
 			return idemServe(w, cached)
 		}
 
+		bizMu.Lock()
+		defer bizMu.Unlock()
 		ss := loadShipments()
 		idx := findShipment(ss, body.ID)
 		if idx < 0 {
@@ -247,9 +268,10 @@ func (a *app) handleBizShipmentUndo() errchain.HandlerFunc {
 
 		ctx := services.NewContext(r.Context())
 		ob, errs, status, err := a.applyOutboundRollback(ctx, sh.OutboundID)
-		if err != nil {
+		if err != nil && status != http.StatusConflict {
 			return validate.NewRequestError(err, status)
 		}
+		// 409=出库单已回滚：上次撤销在「回滚成功、发货单落盘失败」处中断，此处继续收尾发货单状态
 		sh.Status = "cancelled"
 		ss[idx] = sh
 		if err := saveShipments(ss); err != nil {

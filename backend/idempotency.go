@@ -9,6 +9,8 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const idemPath = "/data/idem.json"
@@ -87,4 +89,27 @@ func idemServe(w http.ResponseWriter, body json.RawMessage) error {
 	w.Header().Set("Idempotent-Replay", "true")
 	_, _ = w.Write(body)
 	return nil
+}
+
+// idemExecMu 串行化「查-执行-存」：双击/重试并发到达时只有一个真正执行，其余走缓存回放。
+var idemExecMu sync.Mutex
+
+// idemBegin 进入幂等临界区（无 key 时为空操作），返回解锁函数（defer 调用）。
+func idemBegin(key string) func() {
+	if key == "" {
+		return func() {}
+	}
+	idemExecMu.Lock()
+	return idemExecMu.Unlock
+}
+
+// qtyLocks 按实体串行化「读-改-写数量」，防并发丢更新（biz/盘点/字段PATCH 共用）。
+// 锁数量与物品数同级，常驻代价可忽略，不做清理。
+var qtyLocks sync.Map
+
+func lockEntityQty(id uuid.UUID) func() {
+	v, _ := qtyLocks.LoadOrStore(id, &sync.Mutex{})
+	m := v.(*sync.Mutex)
+	m.Lock()
+	return m.Unlock
 }

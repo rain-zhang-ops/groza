@@ -54,34 +54,37 @@ func (a *app) handleGxAdjust() errchain.HandlerFunc {
 		var gain, loss float64
 
 		for _, ln := range body.Lines {
-			eid, err := uuid.Parse(ln.ItemID)
-			if err != nil {
-				errs = append(errs, "明细无效: "+ln.ItemID)
-				continue
-			}
-			full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
-			if err != nil {
-				errs = append(errs, "物品不存在: "+ln.ItemID)
-				continue
-			}
-			expected := full.Quantity
-			diff := ln.Counted - expected
-			if diff == 0 {
-				continue
-			}
-			upd := entityUpdateFromFull(full)
-			upd.Quantity = ln.Counted
-			if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
-				errs = append(errs, "更新失败: "+full.Name)
-				continue
-			}
-			if diff > 0 {
-				gain += diff
-			} else {
-				loss += -diff
-			}
-			report = append(report, reportRow{ID: ln.ItemID, Name: full.Name, Expected: expected, Counted: ln.Counted, Diff: diff})
-			docLines = append(docLines, gxDocLine{ItemID: ln.ItemID, Qty: diff, Before: expected, After: ln.Counted})
+			func() { // 闭包 + defer：panic 时实体锁也能释放
+				eid, err := uuid.Parse(ln.ItemID)
+				if err != nil {
+					errs = append(errs, "明细无效: "+ln.ItemID)
+					return
+				}
+				defer lockEntityQty(eid)()
+				full, err := a.repos.Entities.GetOneByGroup(ctx, ctx.GID, eid)
+				if err != nil {
+					errs = append(errs, "物品不存在: "+ln.ItemID)
+					return
+				}
+				expected := full.Quantity
+				diff := ln.Counted - expected
+				if diff == 0 {
+					return
+				}
+				upd := entityUpdateFromFull(full)
+				upd.Quantity = ln.Counted
+				if _, err := a.repos.Entities.UpdateByGroup(ctx, ctx.GID, upd); err != nil {
+					errs = append(errs, "更新失败: "+full.Name)
+					return
+				}
+				if diff > 0 {
+					gain += diff
+				} else {
+					loss += -diff
+				}
+				report = append(report, reportRow{ID: ln.ItemID, Name: full.Name, Expected: expected, Counted: ln.Counted, Diff: diff})
+				docLines = append(docLines, gxDocLine{ItemID: ln.ItemID, Qty: diff, Before: expected, After: ln.Counted})
+			}()
 		}
 
 		code := bizRandID()
