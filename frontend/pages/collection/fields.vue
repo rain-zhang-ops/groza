@@ -6,6 +6,7 @@
   import MdiArrowUp from "~icons/mdi/arrow-up";
   import MdiArrowDown from "~icons/mdi/arrow-down";
   import MdiRestore from "~icons/mdi/restore";
+  import MdiChevronDown from "~icons/mdi/chevron-down";
 
   definePageMeta({
     middleware: ["auth"],
@@ -54,6 +55,13 @@
   const isOwner = ref(true);
   const builtKeys = ref<Set<string>>(new Set());
   const confirmDlg = ref<{ text: string; action: () => void } | null>(null);
+  const expanded = ref("");
+
+  function typeLabel(v: string): string { return TYPES.find(t => t.v === v)?.label || v; }
+  function flagsOf(a: any): string {
+    return [a.required && "必填", a.show_column && "列", a.filterable && "筛", a.sortable && "序", a.unit].filter(Boolean).join(" · ");
+  }
+  function toggleAttr(a: any) { expanded.value = expanded.value === a.key ? "" : a.key; }
 
   async function loadMe() {
     try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
@@ -101,10 +109,17 @@
     finally { loading.value = false; }
   }
 
-  function addAttr() { cfg.attributes.push({ key: genKey(), name: "", type: "text", required: false, show_column: true, filterable: true, sortable: false, unit: null, options: [] }); }
+  function addAttr() {
+    const k = genKey();
+    cfg.attributes.push({ key: k, name: "", type: "text", required: false, show_column: true, filterable: true, sortable: false, unit: null, options: [] });
+    expanded.value = k;
+  }
   function delAttr(i: number) {
     const a = cfg.attributes[i];
-    confirmDlg.value = { text: `删除属性「${a?.name || a?.key || "未命名"}」？存量物品将失去该字段映射（保存后生效）。`, action: () => cfg.attributes.splice(i, 1) };
+    confirmDlg.value = {
+      text: `删除字段「${a?.name || a?.key || "未命名"}」？存量物品将失去该字段映射（保存后生效）。`,
+      action: () => { if (expanded.value === a?.key) expanded.value = ""; cfg.attributes.splice(i, 1); },
+    };
   }
   function moveAttr(i: number, d: number) {
     const j = i + d; if (j < 0 || j >= cfg.attributes.length) return;
@@ -159,7 +174,7 @@
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-3">
     <Teleport to="#collection-header-actions" defer>
       <button :class="[btnGhost, 'active:scale-95']" :disabled="saving || !isOwner" @click="askResetDefault"><MdiRestore class="size-4" /> 默认</button>
       <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving || !isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</button>
@@ -172,146 +187,184 @@
       <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
     </div>
     <template v-else>
-      <details class="rounded-xl border bg-card p-4 text-sm" open>
-        <summary class="cursor-pointer font-medium">说明（点开/收起）</summary>
-        <ul class="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-          <li>这里配置库存的<b>四维信息模型</b>：属性 / 位置 / 媒体 / 组织。台账与 AI 会按此渲染。</li>
-          <li><b>属性</b>：物品的字段，可自定义 名称 / 类型 / 必填 / 列 / 筛选 / 单位 / 选项。<b>键</b>是稳定标识，建成后别改。</li>
-          <li><b>位置</b>：分类维度名（如 品牌）与库位规则（可重复，不做唯一约束）。</li>
-          <li><b>媒体</b>：图片槽位（正面/反面/细节/包装），封面槽用于列表缩略图。</li>
-          <li><b>组织</b>：品类标签体系、系列派生规则、分组维度。</li>
-        </ul>
-      </details>
-
-      <!-- 属性 -->
-      <section class="space-y-3 rounded-xl border bg-card p-4">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold">属性（{{ cfg.attributes.length }}）</span>
-          <button :class="[btnGhost, 'active:scale-95']" @click="addAttr"><MdiPlus class="size-4" /> 添加属性</button>
+      <!-- 字段：紧凑行 + 手风琴展开编辑 -->
+      <section class="overflow-hidden rounded-xl border bg-card">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+          <span class="text-sm font-semibold">字段（{{ cfg.attributes.length }}）</span>
+          <button :class="[btnGhost, 'active:scale-95']" @click="addAttr"><MdiPlus class="size-4" /> 添加字段</button>
         </div>
-        <div class="flex flex-col gap-3">
-          <div v-for="(a, i) in cfg.attributes" :key="i" class="rounded-lg border p-3">
+        <div v-if="!cfg.attributes.length" class="p-4 text-center text-sm text-muted-foreground">还没有字段，点「添加字段」。</div>
+        <div v-for="(a, i) in cfg.attributes" :key="a.key || i" class="border-b last:border-b-0">
+          <button type="button" class="flex w-full items-center gap-2 px-4 py-2.5 text-left transition hover:bg-muted/40" @click="toggleAttr(a)">
+            <span class="min-w-0 flex-1 truncate text-sm font-medium" :class="{ 'text-muted-foreground': !a.name }">{{ a.name || "未命名" }}</span>
+            <span class="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{{ typeLabel(a.type) }}</span>
+            <span class="hidden shrink-0 text-xs text-muted-foreground sm:block">{{ flagsOf(a) }}</span>
+            <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform" :class="expanded === a.key && 'rotate-180'" />
+          </button>
+          <div v-if="expanded === a.key" class="space-y-2 border-t bg-muted/30 p-3">
             <div class="flex items-center gap-2">
               <input v-model="a.name" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="名称（如 品牌）" />
-              <select v-model="a.type" :class="[inputCls, 'h-10 w-24 text-base']">
+              <select v-model="a.type" :class="[inputCls, 'h-10 w-24 shrink-0 text-base']">
                 <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.label }}</option>
               </select>
             </div>
-            <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
               <label class="flex items-center gap-1.5"><input v-model="a.required" type="checkbox" class="size-4 accent-primary" /> 必填</label>
               <label class="flex items-center gap-1.5"><input v-model="a.show_column" type="checkbox" class="size-4 accent-primary" /> 显示列</label>
               <label class="flex items-center gap-1.5"><input v-model="a.filterable" type="checkbox" class="size-4 accent-primary" /> 可筛选</label>
               <label class="flex items-center gap-1.5"><input v-model="a.sortable" type="checkbox" class="size-4 accent-primary" /> 可排序</label>
               <label class="flex items-center gap-1.5 text-muted-foreground">单位 <input v-model="a.unit" :class="[inputCls, 'h-9 w-16 text-base']" placeholder="元" /></label>
-              <div class="ml-auto flex items-center gap-1">
-                <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveAttr(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
-                <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === cfg.attributes.length - 1" title="下移" @click="moveAttr(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
-                <button class="grid h-9 w-9 place-items-center rounded-lg border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-95" title="删除" @click="delAttr(i)"><MdiDelete class="h-4 w-4" /></button>
-              </div>
             </div>
-            <div v-if="a.type === 'select' || a.type === 'multiselect'" class="mt-2 flex items-center gap-2">
+            <div v-if="a.type === 'select' || a.type === 'multiselect'" class="flex items-center gap-2">
               <span class="shrink-0 text-xs text-muted-foreground">选项</span>
               <input :value="(a.options || []).join(' / ')" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="用 / 分隔，如 A4 / A5 / B5" @input="a.options = ($event.target as HTMLInputElement).value.split('/').map(s => s.trim())" />
             </div>
-            <div class="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-              <span>键</span>
-              <input v-model="a.key" :disabled="builtKeys.has(a.key)" title="键是稳定标识，建成后别改" :class="[inputCls, 'h-9 w-40 font-mono text-base disabled:opacity-50']" />
+            <div class="flex items-center gap-2 pt-1">
+              <span class="text-xs text-muted-foreground">键</span>
+              <input v-model="a.key" :disabled="builtKeys.has(a.key)" title="键是稳定标识，建成后别改" :class="[inputCls, 'h-9 w-32 font-mono text-xs disabled:opacity-50']" />
+              <div class="ml-auto flex items-center gap-1">
+                <button class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveAttr(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
+                <button class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === cfg.attributes.length - 1" title="下移" @click="moveAttr(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
+                <button class="grid h-9 w-9 place-items-center rounded-lg text-destructive/70 transition hover:bg-destructive/10 hover:text-destructive active:scale-95" title="删除" @click="delAttr(i)"><MdiDelete class="h-4 w-4" /></button>
+              </div>
             </div>
           </div>
-          <div v-if="!cfg.attributes.length" class="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">还没有属性，点「添加属性」。</div>
         </div>
       </section>
 
       <!-- 位置 -->
-      <section class="space-y-3 rounded-xl border bg-card p-4">
-        <span class="text-sm font-semibold">位置</span>
-        <label class="block text-sm">分类维度名
-          <input v-model="cfg.location.dim" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="品牌" />
-        </label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.location.shelf.enabled" type="checkbox" class="size-4 accent-primary" /> 启用库位</label>
-        <div v-if="cfg.location.shelf.enabled" class="grid gap-3 sm:grid-cols-2">
-          <label class="block text-sm">库位名
-            <input v-model="cfg.location.shelf.name" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="库位" />
+      <details class="group rounded-xl border bg-card">
+        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          位置
+          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ cfg.location.dim }}{{ cfg.location.shelf.enabled ? " · " + cfg.location.shelf.name : "" }}</span>
+          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div class="space-y-3 border-t p-4 text-sm">
+          <label class="block">分类维度名
+            <input v-model="cfg.location.dim" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="品牌" />
           </label>
-          <label class="block text-sm">格式（正则，可选）
-            <input v-model="cfg.location.shelf.pattern" :class="[inputCls, 'mt-1 w-full font-mono text-base']" placeholder="^[A-Z]-\\d{1,3}$" />
-          </label>
+          <label class="flex items-center gap-2"><input v-model="cfg.location.shelf.enabled" type="checkbox" class="size-4 accent-primary" /> 启用库位</label>
+          <div v-if="cfg.location.shelf.enabled" class="grid gap-3 sm:grid-cols-2">
+            <label class="block">库位名
+              <input v-model="cfg.location.shelf.name" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="库位" />
+            </label>
+            <label class="block">格式（正则，可选）
+              <input v-model="cfg.location.shelf.pattern" :class="[inputCls, 'mt-1 w-full font-mono text-base']" placeholder="^[A-Z]-\\d{1,3}$" />
+            </label>
+          </div>
+          <p class="text-xs text-muted-foreground">库位可重复（同一货架位可放多款）；唯一性只对资产号/二维码。</p>
         </div>
-        <p class="text-xs text-muted-foreground">库位可重复（同一货架位可放多款）；唯一性只对资产号/二维码。</p>
-      </section>
+      </details>
 
       <!-- 媒体 -->
-      <section class="space-y-3 rounded-xl border bg-card p-4">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold">媒体槽位（{{ cfg.media.slots.length }}）</span>
-          <button :class="[btnGhost, 'active:scale-95']" @click="addSlot"><MdiPlus class="size-4" /> 添加槽位</button>
-        </div>
-        <div class="flex flex-col gap-2">
-          <div v-for="(s, i) in cfg.media.slots" :key="i" class="flex flex-wrap items-center gap-2 rounded-lg border p-3">
-            <input v-model="s.name" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="槽位名（如 正面）" />
-            <label class="flex items-center gap-1.5 text-sm"><input v-model="s.required" type="checkbox" class="size-4 accent-primary" /> 必填</label>
-            <label class="flex items-center gap-1.5 text-sm"><input v-model="s.multiple" type="checkbox" class="size-4 accent-primary" /> 多张</label>
-            <label class="flex items-center gap-1.5 text-sm text-muted-foreground">封面 <input type="radio" name="cover" :value="s.key" v-model="cfg.media.cover" class="size-4 accent-primary" /></label>
-            <div class="ml-auto flex items-center gap-1">
-              <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" @click="moveSlot(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
-              <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === cfg.media.slots.length - 1" @click="moveSlot(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
-              <button class="grid h-9 w-9 place-items-center rounded-lg border border-destructive/40 text-destructive transition hover:bg-destructive/10 active:scale-95" @click="delSlot(i)"><MdiDelete class="h-4 w-4" /></button>
+      <details class="group rounded-xl border bg-card">
+        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          媒体
+          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ cfg.media.slots.length }} 槽位 · 封面 {{ (cfg.media.slots.find((s: any) => s.key === cfg.media.cover) || {}).name || "—" }}</span>
+          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div class="space-y-3 border-t p-4 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-muted-foreground">槽位（{{ cfg.media.slots.length }}）</span>
+            <button :class="[btnGhost, 'active:scale-95']" @click="addSlot"><MdiPlus class="size-4" /> 添加槽位</button>
+          </div>
+          <div class="divide-y rounded-lg border">
+            <div v-for="(s, i) in cfg.media.slots" :key="s.key || i" class="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+              <input v-model="s.name" :class="[inputCls, 'h-10 min-w-0 flex-1 basis-24 text-base']" placeholder="槽位名（如 正面）" />
+              <label class="flex items-center gap-1.5"><input v-model="s.required" type="checkbox" class="size-4 accent-primary" /> 必填</label>
+              <label class="flex items-center gap-1.5"><input v-model="s.multiple" type="checkbox" class="size-4 accent-primary" /> 多张</label>
+              <label class="flex items-center gap-1.5 text-muted-foreground"><input type="radio" name="cover" :value="s.key" v-model="cfg.media.cover" class="size-4 accent-primary" /> 封面</label>
+              <div class="ml-auto flex items-center gap-1">
+                <button class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveSlot(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
+                <button class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === cfg.media.slots.length - 1" title="下移" @click="moveSlot(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
+                <button class="grid h-9 w-9 place-items-center rounded-lg text-destructive/70 transition hover:bg-destructive/10 hover:text-destructive active:scale-95" title="删除" @click="delSlot(i)"><MdiDelete class="h-4 w-4" /></button>
+              </div>
             </div>
           </div>
+          <label class="block">每件最多图片数
+            <input v-model.number="cfg.media.maxPerItem" type="number" inputmode="numeric" :class="[inputCls, 'mt-1 w-24 text-base']" />
+          </label>
         </div>
-        <label class="block text-sm">每件最多图片数
-          <input v-model.number="cfg.media.maxPerItem" type="number" inputmode="numeric" :class="[inputCls, 'mt-1 w-24 text-base']" />
-        </label>
-      </section>
+      </details>
 
       <!-- 组织 -->
-      <section class="space-y-3 rounded-xl border bg-card p-4">
-        <span class="text-sm font-semibold">组织</span>
-        <label class="block text-sm">标签体系名
-          <input v-model="cfg.organization.tagGroup.name" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="品类" />
-        </label>
-        <div>
-          <div class="mb-1 flex items-center justify-between">
-            <span class="text-sm">标签选项（{{ cfg.organization.tagGroup.options.length }}）</span>
-            <button :class="[btnGhost, 'active:scale-95']" @click="addTag"><MdiPlus class="size-4" /> 添加</button>
+      <details class="group rounded-xl border bg-card">
+        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          组织
+          <span class="ml-auto text-xs font-normal text-muted-foreground">{{ cfg.organization.tagGroup.name }}（{{ cfg.organization.tagGroup.options.length }}）</span>
+          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div class="space-y-3 border-t p-4 text-sm">
+          <label class="block">标签体系名
+            <input v-model="cfg.organization.tagGroup.name" :class="[inputCls, 'mt-1 w-full text-base']" placeholder="品类" />
+          </label>
+          <div>
+            <div class="mb-1 flex items-center justify-between">
+              <span class="text-muted-foreground">标签选项（{{ cfg.organization.tagGroup.options.length }}）</span>
+              <button :class="[btnGhost, 'active:scale-95']" @click="addTag"><MdiPlus class="size-4" /> 添加</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <div v-for="(t, i) in cfg.organization.tagGroup.options" :key="i" class="flex items-center rounded-full border pl-3">
+                <input v-model="cfg.organization.tagGroup.options[i]" class="w-20 bg-transparent py-1.5 text-base outline-none" placeholder="标签" />
+                <button class="grid h-9 w-8 place-items-center rounded-full text-muted-foreground transition hover:bg-muted active:scale-95" title="删除标签" @click="delTag(i)"><MdiDelete class="h-4 w-4" /></button>
+              </div>
+            </div>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <div v-for="(t, i) in cfg.organization.tagGroup.options" :key="i" class="flex items-center gap-1 rounded-full border pl-2">
-              <input v-model="cfg.organization.tagGroup.options[i]" class="w-20 bg-transparent py-1 text-base outline-none" placeholder="标签" />
-              <button class="grid h-9 w-9 place-items-center rounded-lg border text-muted-foreground transition hover:bg-muted active:scale-95" title="删除标签" @click="delTag(i)"><MdiDelete class="h-4 w-4" /></button>
+          <label class="flex items-center gap-2"><input v-model="cfg.organization.series.enabled" type="checkbox" class="size-4 accent-primary" /> 启用系列（按名称去括号派生）</label>
+          <label class="flex items-center gap-2"><input v-model="cfg.organization.series.stripParentheses" type="checkbox" class="size-4 accent-primary" /> 去除名称中的括号内容</label>
+        </div>
+      </details>
+
+      <!-- 权限 -->
+      <details class="group rounded-xl border bg-card">
+        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          权限
+          <span class="ml-auto text-xs font-normal text-muted-foreground">成员 {{ [cfg.permissions.editorCanIntake, cfg.permissions.editorCanOutbound, cfg.permissions.editorCanAdjust].filter(Boolean).length }}/3 项</span>
+          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div class="space-y-2 border-t p-4 text-sm">
+          <p class="text-xs text-muted-foreground">管理员（owner）始终可用；以下控制普通成员（editor）可执行的操作。</p>
+          <label class="flex items-center gap-2"><input v-model="cfg.permissions.editorCanIntake" type="checkbox" class="size-4 accent-primary" /> 允许入库</label>
+          <label class="flex items-center gap-2"><input v-model="cfg.permissions.editorCanOutbound" type="checkbox" class="size-4 accent-primary" /> 允许出库</label>
+          <label class="flex items-center gap-2"><input v-model="cfg.permissions.editorCanAdjust" type="checkbox" class="size-4 accent-primary" /> 允许盘点</label>
+        </div>
+      </details>
+
+      <!-- 版本历史 -->
+      <details class="group rounded-xl border bg-card">
+        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          版本历史
+          <span class="ml-auto text-xs font-normal text-muted-foreground">当前 v{{ cfg.version }}</span>
+          <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div class="space-y-2 border-t p-4 text-sm">
+          <p class="text-xs text-muted-foreground">每次保存生成一个版本；可恢复到任意历史版本（生成新版本，不丢失后续记录）。</p>
+          <div v-if="!history.length" class="py-2 text-center text-muted-foreground">暂无历史</div>
+          <div v-else class="divide-y rounded-lg border">
+            <div v-for="h in history" :key="h.version" class="flex items-center gap-2 px-3 py-2">
+              <span class="w-10 shrink-0 font-mono text-xs">v{{ h.version }}</span>
+              <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ reasonLabel(h.reason) }}</span>
+              <span class="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:block">{{ (h.createdAt || "").slice(0, 16).replace("T", " ") }}</span>
+              <button class="h-9 shrink-0 rounded-lg border px-3 text-xs transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="!isOwner || restoring === h.version || h.version === cfg.version" @click="restoreVersion(h.version)">{{ restoring === h.version ? "恢复中…" : "恢复" }}</button>
             </div>
           </div>
         </div>
-        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.organization.series.enabled" type="checkbox" class="size-4 accent-primary" /> 启用系列（按名称去括号派生）</label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.organization.series.stripParentheses" type="checkbox" class="size-4 accent-primary" /> 去除名称中的括号内容</label>
-      </section>
+      </details>
 
-      <!-- 权限 -->
-      <section class="space-y-2 rounded-xl border bg-card p-4">
-        <span class="text-sm font-semibold">权限</span>
-        <p class="text-xs text-muted-foreground">管理员（owner）始终可用；以下控制普通成员（editor）可执行的操作。</p>
-        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanIntake" type="checkbox" class="size-4 accent-primary" /> 允许入库</label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanOutbound" type="checkbox" class="size-4 accent-primary" /> 允许出库</label>
-        <label class="flex items-center gap-2 text-sm"><input v-model="cfg.permissions.editorCanAdjust" type="checkbox" class="size-4 accent-primary" /> 允许盘点</label>
-      </section>
-
-      <!-- 版本历史 -->
-      <section class="space-y-2 rounded-xl border bg-card p-4">
-        <div class="flex items-center justify-between">
-          <span class="text-sm font-semibold">版本历史（最近 {{ history.length }}）</span>
-          <span class="text-xs text-muted-foreground">当前 v{{ cfg.version }}</span>
-        </div>
-        <p class="text-xs text-muted-foreground">每次保存都会生成一个版本；可恢复到任意历史版本（生成新版本，不丢失后续记录）。</p>
-        <div v-if="!history.length" class="py-3 text-center text-sm text-muted-foreground">暂无历史</div>
-        <div v-else class="divide-y rounded-lg border text-sm">
-          <div v-for="h in history" :key="h.version" class="flex items-center gap-2 p-2">
-            <span class="w-12 shrink-0 font-mono text-xs">v{{ h.version }}</span>
-            <span class="min-w-0 flex-1 truncate text-muted-foreground">{{ reasonLabel(h.reason) }}</span>
-            <span class="shrink-0 text-xs tabular-nums text-muted-foreground">{{ (h.createdAt || "").slice(0, 16).replace("T", " ") }}</span>
-            <button class="h-9 shrink-0 rounded-lg border px-3 text-xs transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="!isOwner || restoring === h.version || h.version === cfg.version" @click="restoreVersion(h.version)">{{ restoring === h.version ? "恢复中…" : "恢复" }}</button>
-          </div>
-        </div>
-      </section>
+      <!-- 说明 -->
+      <details class="group rounded-xl border bg-card">
+        <summary class="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+          说明
+          <MdiChevronDown class="ml-auto size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <ul class="list-disc space-y-1 border-t p-4 pl-8 text-sm text-muted-foreground">
+          <li>这里配置库存的信息模型：字段 / 位置 / 媒体 / 组织 / 权限。台账与 AI 按此渲染。</li>
+          <li><b>字段</b>：物品的自定义字段，可配名称 / 类型 / 必填 / 显示列 / 筛选 / 排序 / 单位 / 选项。<b>键</b>是稳定标识，建成后别改。</li>
+          <li><b>位置</b>：分类维度名（如 品牌）与库位规则（可重复，不做唯一约束）。</li>
+          <li><b>媒体</b>：图片槽位（正面/反面/细节/包装），封面槽用于列表缩略图。</li>
+          <li><b>组织</b>：标签体系、系列派生规则。</li>
+        </ul>
+      </details>
     </template>
 
     <div v-if="confirmDlg" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="confirmDlg = null">
