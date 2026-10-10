@@ -137,7 +137,7 @@
   async function submit() {
     saveSupplier();
     const list = cartList.value.map(l => ({ entityId: l.entityId, count: Math.round(l.count) || 0, cost: l.cost || 0, sell: l.sell || 0 }));
-    if (!list.length || list.some(l => l.count <= 0)) { flash("先添加入库商品并填数量"); return; }
+    if (!list.length || list.some(l => l.count <= 0)) { flash("先添加入库物品并填数量"); return; }
     saving.value = true;
     const opId = (globalThis.crypto?.randomUUID?.() ?? (Date.now().toString(36) + Math.random().toString(36).slice(2)));
     try {
@@ -188,7 +188,7 @@
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
           <NuxtLink to="/ship" :class="btnGhost">发货</NuxtLink>
-          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">物品台账</NuxtLink>
         </div>
 
       </header>
@@ -221,7 +221,7 @@
           <input v-model="note" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="备注（档口/日期/特殊约定…）" />
         </div>
         <div class="mt-2 flex items-center gap-2">
-          <input ref="qInput" v-model="q" :class="[inputCls, 'h-11 min-w-0 flex-1 text-base']" placeholder="搜索商品加入入库单" />
+          <input ref="qInput" v-model="q" :class="[inputCls, 'h-11 min-w-0 flex-1 text-base']" placeholder="搜索物品加入入库单" />
         </div>
         <div v-if="loading" class="mt-2 space-y-2">
           <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
@@ -232,7 +232,7 @@
         </div>
         <template v-else>
           <div v-if="!rows.length" :class="emptyCls">
-            暂无商品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">台账</NuxtLink> 新增
+            暂无物品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">物品台账</NuxtLink> 新增
           </div>
           <div v-else class="mt-2 max-h-56 space-y-1 overflow-auto">
             <button
@@ -246,7 +246,7 @@
               <span class="shrink-0 text-xs tabular-nums text-muted-foreground">库存 {{ r.qty }}</span>
               <span class="shrink-0 text-xs font-medium text-primary">＋加入</span>
             </button>
-            <div v-if="!filtered.length" class="py-4 text-center text-sm text-muted-foreground">没有匹配的商品（先到台账新增）</div>
+            <div v-if="!filtered.length" class="py-4 text-center text-sm text-muted-foreground">没有匹配的物品（先到物品台账新增）</div>
           </div>
         </template>
       </section>

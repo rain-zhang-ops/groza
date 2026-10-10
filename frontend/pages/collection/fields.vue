@@ -158,7 +158,7 @@
       <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving || !isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</button>
     </Teleport>
 
-    <div v-if="!isOwner" class="rounded-xl bg-amber-500/15 p-3 text-sm text-amber-600">仅管理员（owner）可修改库存配置。</div>
+    <div v-if="!isOwner" class="rounded-xl bg-amber-500/15 p-3 text-sm text-amber-600">仅管理员（owner）可修改库存架构。</div>
 
     <div v-if="err" :class="errorCls">{{ err }}</div>
     <div v-else-if="loading" class="space-y-2">

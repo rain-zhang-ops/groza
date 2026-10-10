@@ -752,7 +752,7 @@ def main():
         '      icon: MdiMagnify,\n'
         '      id: 3, group: "库存",\n'
         '      active: computed(() => route.path === "/ledger" && route.query.count !== "1"),\n'
-        '      name: computed(() => "物品"),\n'
+        '      name: computed(() => "物品台账"),\n'
         '      to: "/ledger",\n'
         '    },\n'
         '    {\n'
@@ -975,6 +975,12 @@ def main():
                 s_nav = s_nav[:insert_at + len("\n  ];")] + navgroups_src + s_nav[insert_at + len("\n  ];"):]
         open(dv, "w", encoding="utf-8").write(s_nav)
         done("nav-restructure Codex 式分组扁平菜单")
+
+    # 导航短名对齐页面全名：物品 → 物品台账（nav-restructure 幂等跳过时由本补丁兜底）
+    rep(dv,
+        'name: computed(() => "物品"),',
+        'name: computed(() => "物品台账"),',
+        "nav-ledger-fullname")
 
     # ---- 9a. 侧栏头部瘦身（Codex 式：衬线字标 + 轻量创建按钮）----
     rep(dv,

@@ -6,7 +6,7 @@
     middleware: ["auth"],
   });
 
-  useHead({ title: "Groza | 选项配置" });
+  useHead({ title: "Groza | 选项" });
 
   const loading = ref(true);
   const saving = ref(false);

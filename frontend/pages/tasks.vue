@@ -11,7 +11,7 @@
   import MdiRefresh from "~icons/mdi/refresh";
 
   definePageMeta({ middleware: ["auth"] });
-  useHead({ title: "Groza | 待办中心" });
+  useHead({ title: "Groza | 待办" });
 
   type Item = Record<string, any>;
   const loading = ref(true);
@@ -54,7 +54,7 @@
   const queues = computed(() => {
     const list = items.value;
     return [
-      { key: "noImg", label: "缺图片", icon: MdiImageOffOutline, filter: "noImg", count: list.filter(it => !it.thumb).length },
+      { key: "noImg", label: "缺图", icon: MdiImageOffOutline, filter: "noImg", count: list.filter(it => !it.thumb).length },
       { key: "noPrice", label: "缺价格", icon: MdiCurrencyUsdOff, filter: "noPrice", count: list.filter(it => num(fv(it, "进价")) === null && num(fv(it, "售价")) === null).length },
       { key: "noSerial", label: "缺库位", icon: MdiMapMarkerOff, filter: "noSerial", count: list.filter(it => !it.serial).length },
       { key: "noSafety", label: "缺安全库存", icon: MdiShieldAlertOutline, filter: "noSafety", count: list.filter(it => (num(fv(it, "安全库存")) || 0) <= 0).length },
@@ -103,7 +103,7 @@
             隐藏 0 项
           </button>
           <button :class="btnGhost" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
-          <NuxtLink to="/ledger" :class="btnPrimary">台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnPrimary">物品台账</NuxtLink>
         </div>
       </header>
 

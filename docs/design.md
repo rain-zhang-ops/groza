@@ -626,3 +626,10 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **登出按钮换位**：SidebarFooter 的全宽大按钮（折叠态甚至是 destructive 红块）改为 Claude/Codex 式安静页脚——`[头像图标+用户名(→/profile)] [32px 登出小图标]`，登出默认 muted、hover 才显 destructive 色；tooltip/aria 保留（data-testid 不变，旧测试兼容）。
 - **实现**：patch_upstream.py nav_body 组名 replace_all（配置/管理→系统）+ 删 profile 项；nav-restructure 幂等 skip 条件改 `group: "系统"`（splice 路径对 pristine 与旧补丁态均成立）；sidebar-footer-user-chip rep 块替换整段 SidebarFooter。
 - **验证**：桌面/iPhone 抽屉组标签=[概览,库存,进出,系统]、无「我的」nav 项、系统组 10 项齐、页脚文本=用户名、登出按钮 32×32、点用户条 →/profile。
+
+### 全站文案统一：物品台账正名 + 术语清扫（27）
+- **三处同名规则**：导航项 = 页头 h1 = useHead title。修正：nav「物品」→「物品台账」（h1 本就是物品台账）；title「台账查询→物品台账」「待办中心→待办」「选项配置→选项」。盘点模式 title/h1 仍随 countMode 变「盘点」。
+- **术语清扫**：「商品」全废 →「物品」（入/出/发货 12 处：搜索占位、空态、校验提示、确认弹窗）；页间互跳与句内引用「台账」→ 全名「物品台账」（6 处）；旧路径指引「集合→字段」→「系统 → 库存架构」；fields 页「库存配置」→「库存架构」；tasks 统计卡「缺图片」→「缺图」（对齐台账筛选句式）。
+- **病句/格式**：「买家 / 去向（必填建议填）」→「（建议填写）」；「联网搜索 1元/次」→「1 元/次」（两处空格统一）；「导出CSV」→「导出 CSV」（中英间距）。
+- **实现**：nav 改名走补丁（nav_body 源同步 + nav-ledger-fullname rep 兜底——nav-restructure 幂等跳过时仍生效）；页面文案直接改 frontend/pages 定制文件（25 处带断言替换）；ui-standard §9 增补「三处同名」「单款称物品、禁商品」条款。
+- **验证**：Playwright 18 项断言（侧栏名/三页 h1 与 title/四页无「商品」/链接全名/占位属性/选项 title）全过。

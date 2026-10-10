@@ -130,7 +130,7 @@
 
   async function submitCreate() {
     const list = cartList.value.map(l => ({ entityId: l.entityId, count: Math.round(l.count) || 0 }));
-    if (!list.length || list.some(l => l.count <= 0)) { flash("先添加发货商品并填数量"); return; }
+    if (!list.length || list.some(l => l.count <= 0)) { flash("先添加发货物品并填数量"); return; }
     saving.value = true;
     try {
       const res = await $fetch<Record<string, any>>("/api/v1/biz/shipments", {
@@ -152,9 +152,9 @@
 
   // ---------- 发货 / 取消 / 撤销 ----------
   const CONFIRM_TEXT = {
-    ship: { title: "确认发货", body: (sh: Shipment) => `将扣减 ${sh.items.length} 款商品库存并生成出库单（共 ${totalOf(sh)} 件）。`, ok: "确认发货" },
+    ship: { title: "确认发货", body: (sh: Shipment) => `将扣减 ${sh.items.length} 款物品库存并生成出库单（共 ${totalOf(sh)} 件）。`, ok: "确认发货" },
     cancel: { title: "取消发货单", body: (sh: Shipment) => `买家退款或误建？取消后库存不受影响（${sh.items.length} 款 · ${totalOf(sh)} 件）。`, ok: "确认取消" },
-    undo: { title: "撤销发货", body: (sh: Shipment) => `将回滚对应出库单，${sh.items.length} 款商品库存加回。`, ok: "确认撤销" },
+    undo: { title: "撤销发货", body: (sh: Shipment) => `将回滚对应出库单，${sh.items.length} 款物品库存加回。`, ok: "确认撤销" },
   } as const;
 
   async function runAction() {
@@ -189,7 +189,7 @@
         <span v-if="counts.pending" class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">待发 {{ counts.pending }}</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
-          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">物品台账</NuxtLink>
           <button :class="btnPrimary" @click="openCreate">新建发货单</button>
         </div>
       </header>
@@ -268,11 +268,11 @@
           </div>
 
           <div class="mb-3 space-y-2">
-            <input v-model="party" :class="inputClsLg" placeholder="买家 / 去向（必填建议填）" />
+            <input v-model="party" :class="inputClsLg" placeholder="买家 / 去向（建议填写）" />
             <input v-model="note" :class="inputClsLg" placeholder="备注（订单号 / 快递 / 说明…）" />
           </div>
 
-          <input v-model="q" :class="[inputClsLg, 'mb-2']" placeholder="搜索商品（名称/品牌）" />
+          <input v-model="q" :class="[inputClsLg, 'mb-2']" placeholder="搜索物品（名称/品牌）" />
           <div class="max-h-[38vh] space-y-1 overflow-auto">
             <div v-for="r in pickerList" :key="r.id" class="flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-muted/60">
               <GxThumb v-if="r.thumb" :src="imgUrl(r)" box-class="h-11 w-11 rounded-lg border" />
@@ -290,7 +290,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="!pickerList.length" :class="emptyCls">没有匹配的有库存商品</div>
+            <div v-if="!pickerList.length" :class="emptyCls">没有匹配的有库存物品</div>
           </div>
 
           <div v-if="cartList.length" class="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3">

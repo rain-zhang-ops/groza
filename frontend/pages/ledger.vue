@@ -49,7 +49,7 @@
   const countMode = ref(false);
 
   useHead({
-    title: () => (countMode.value ? "Groza | 盘点" : "Groza | 台账查询"),
+    title: () => (countMode.value ? "Groza | 盘点" : "Groza | 物品台账"),
   });
 
   type Row = {
@@ -2055,7 +2055,7 @@
               <Transition name="pop">
                 <button v-if="undoLast" class="inline-flex items-center gap-1 rounded-lg border border-amber-400 bg-amber-500/10 px-3 py-1.5 text-sm font-medium text-amber-600 transition-all hover:bg-amber-500/20 active:scale-95" @click="undo"><MdiUndo class="h-4 w-4" /> 撤销</button>
               </Transition>
-              <label class="flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-1.5 text-xs text-muted-foreground" title="联网搜索 1元/次，请省着用">
+              <label class="flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-1.5 text-xs text-muted-foreground" title="联网搜索 1 元/次，请省着用">
                 <input v-model="aiSearch" type="checkbox" class="accent-primary" /> 联网
               </label>
               <span class="inline-block h-2 w-2 rounded-full" :class="wsOk ? 'bg-primary' : 'bg-muted-foreground/40'" :title="wsOk ? '实时同步已连接' : '实时同步未连接'"></span>
@@ -2070,7 +2070,7 @@
                 <button v-if="canInstall" class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="install"><MdiCellphoneArrowDown class="mr-1.5 inline h-4 w-4" />安装到桌面</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="qualityOpen = true"><MdiClipboardCheckOutline class="mr-1.5 inline h-4 w-4" />数据体检</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="importOpen = true"><MdiFileImportOutline class="mr-1.5 inline h-4 w-4" />批量导入</button>
-                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportCSV"><MdiDownload class="mr-1.5 inline h-4 w-4" />导出CSV</button>
+                <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportCSV"><MdiDownload class="mr-1.5 inline h-4 w-4" />导出 CSV</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="copyList"><MdiContentPaste class="mr-1.5 inline h-4 w-4" />复制清单</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="exportImage"><MdiImage class="mr-1.5 inline h-4 w-4" />导出长图</button>
                 <button class="block w-full rounded px-2.5 py-2.5 text-left transition hover:bg-muted" @click="toggleBigFont"><MdiFormatSize class="mr-1.5 inline h-4 w-4" />{{ bigFont ? "标准字号" : "大字号" }}</button>
@@ -2908,7 +2908,7 @@
               <input v-else-if="f.type === 'boolean'" v-model="f.value" type="checkbox" class="h-5 w-5 accent-primary" />
               <span v-else class="text-xs text-muted-foreground">{{ f.value }}</span>
             </label>
-            <div v-if="!fieldsDraft.length" class="py-4 text-center text-sm text-muted-foreground">该物品暂无自定义字段（可在 集合→字段 添加）</div>
+            <div v-if="!fieldsDraft.length" class="py-4 text-center text-sm text-muted-foreground">该物品暂无自定义字段（可在 系统 → 库存架构 添加）</div>
           </div>
           <div class="mt-3 flex gap-2">
             <button :class="[btnGhost, 'flex-1 justify-center py-2.5 text-base']" @click="fieldsOpen = false">取消</button>

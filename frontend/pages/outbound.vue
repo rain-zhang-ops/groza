@@ -163,7 +163,7 @@
 
   async function submit() {
     const list = cartList.value.map(l => ({ entityId: l.entityId, count: Math.round(l.count) || 0 }));
-    if (!list.length || list.some(l => l.count <= 0)) { flash("先添加出库商品并填数量"); return; }
+    if (!list.length || list.some(l => l.count <= 0)) { flash("先添加出库物品并填数量"); return; }
     const over = overIssue();
     if (over) { flash(over); return; }
     saving.value = true;
@@ -208,7 +208,7 @@
   async function openScan() {
     const w = window as any;
     scanOpen.value = true;
-    scanMsg.value = "对准商品二维码/条码（可连续扫描加入）";
+    scanMsg.value = "对准物品二维码/条码（可连续扫描加入）";
     if (!("BarcodeDetector" in w)) { scanMsg.value = "本机不支持扫码，请用搜索框"; return; }
     try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -271,7 +271,7 @@
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
           <NuxtLink to="/ship" :class="btnGhost">发货</NuxtLink>
-          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">物品台账</NuxtLink>
         </div>
 
       </header>
@@ -313,7 +313,7 @@
           </div>
           <template v-else>
             <div v-if="!rows.length" :class="emptyCls">
-              暂无商品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">台账</NuxtLink> 新增
+              暂无物品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">物品台账</NuxtLink> 新增
             </div>
             <div v-else class="mt-2 max-h-[46vh] space-y-1 overflow-auto">
               <div
@@ -336,7 +336,7 @@
                   </div>
                 </div>
               </div>
-              <div v-if="!filtered.length" :class="emptyCls">没有匹配的商品<template v-if="hideSoldOut && hiddenSoldOut">（已隐藏 {{ hiddenSoldOut }} 个无库存）</template></div>
+              <div v-if="!filtered.length" :class="emptyCls">没有匹配的物品<template v-if="hideSoldOut && hiddenSoldOut">（已隐藏 {{ hiddenSoldOut }} 个无库存）</template></div>
             </div>
           </template>
         </section>
