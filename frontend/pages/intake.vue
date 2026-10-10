@@ -188,7 +188,7 @@
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
           <NuxtLink to="/ship" :class="btnGhost">发货</NuxtLink>
-          <NuxtLink to="/ledger" :class="btnGhost">物品台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
 
       </header>
@@ -232,7 +232,7 @@
         </div>
         <template v-else>
           <div v-if="!rows.length" :class="emptyCls">
-            暂无物品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">物品台账</NuxtLink> 新增
+            暂无物品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">台账</NuxtLink> 新增
           </div>
           <div v-else class="mt-2 max-h-56 space-y-1 overflow-auto">
             <button
@@ -246,7 +246,7 @@
               <span class="shrink-0 text-xs tabular-nums text-muted-foreground">库存 {{ r.qty }}</span>
               <span class="shrink-0 text-xs font-medium text-primary">＋加入</span>
             </button>
-            <div v-if="!filtered.length" class="py-4 text-center text-sm text-muted-foreground">没有匹配的物品（先到物品台账新增）</div>
+            <div v-if="!filtered.length" class="py-4 text-center text-sm text-muted-foreground">没有匹配的物品（先到台账新增）</div>
           </div>
         </template>
       </section>

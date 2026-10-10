@@ -315,7 +315,7 @@ def main():
     m.update(rename)
     # 集合页签命名对齐侧栏（去行话、消解组项同名）
     tabs = d.setdefault("collection", {}).setdefault("tabs", {})
-    tabs.update({"notifiers": "通知", "settings": "集合设置", "entity_types": "结构"})
+    tabs.update({"notifiers": "通知", "settings": "设置", "entity_types": "结构"})
     json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
     done("menu-zh 菜单统一中文")
 
@@ -754,7 +754,7 @@ def main():
     # 「库存架构」tab 收敛为唯一最终形态（历史注入曾叠出 配置→/templates + 库存架构→/collection/fields 两个重复 tab）
     import re as _re
     c = open(coll, encoding="utf-8").read()
-    fields_final = '    {\n      id: "fields",\n      label: "库存架构",\n      to: "/collection/fields",\n      icon: MdiFormTextbox,\n    },\n'
+    fields_final = '    {\n      id: "fields",\n      label: "架构",\n      to: "/collection/fields",\n      icon: MdiFormTextbox,\n    },\n'
     old_entries = _re.findall(r'    \{\n      id: "fields",\n.*?\n    \},\n', c, flags=_re.S)
     if old_entries == [fields_final]:
         skip("collection-fields-tab-unify")
@@ -766,7 +766,7 @@ def main():
             fail("collection-fields-tab-unify", "分类 tab 锚点未找到")
         else:
             open(coll, "w", encoding="utf-8").write(c.replace(loc_tab, loc_tab + fields_final, 1))
-            done("collection-fields-tab-unify 字段 tab 收敛唯一「库存架构」")
+            done("collection-fields-tab-unify 字段 tab 收敛唯一「架构」")
 
     # ---- 7c. 集合页纯粹化：删「管理集合」卡与 tab 条，布局按路由自动出页面标题 ----
     s = open(coll, encoding="utf-8").read()
@@ -883,7 +883,7 @@ def main():
         '      icon: MdiMagnify,\n'
         '      id: 3, group: "库存",\n'
         '      active: computed(() => route.path === "/ledger" && route.query.count !== "1"),\n'
-        '      name: computed(() => "物品台账"),\n'
+        '      name: computed(() => "台账"),\n'
         '      to: "/ledger",\n'
         '    },\n'
         '    {\n'
@@ -918,7 +918,7 @@ def main():
         '      icon: MdiTune,\n'
         '      id: 9061, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/fields"),\n'
-        '      name: computed(() => "库存架构"),\n'
+        '      name: computed(() => "架构"),\n'
         '      to: "/collection/fields",\n'
         '    },\n'
         '    {\n'
@@ -1107,11 +1107,16 @@ def main():
         open(dv, "w", encoding="utf-8").write(s_nav)
         done("nav-restructure Codex 式分组扁平菜单")
 
-    # 导航短名对齐页面全名：物品 → 物品台账（nav-restructure 幂等跳过时由本补丁兜底）
-    rep(dv,
-        'name: computed(() => "物品"),',
-        'name: computed(() => "物品台账"),',
-        "nav-ledger-fullname")
+    # 菜单统一 2 字：物品台账 → 台账、库存架构 → 架构（nav-restructure 幂等跳过时由本补丁迁移已补丁态）
+    rep_any(dv,
+        ['name: computed(() => "物品台账"),',
+         'name: computed(() => "物品"),'],
+        'name: computed(() => "台账"),',
+        "nav-ledger-shortname")
+    rep_any(dv,
+        ['name: computed(() => "库存架构"),'],
+        'name: computed(() => "架构"),',
+        "nav-fields-shortname")
 
     # ---- 9a. 侧栏头部瘦身（Codex 式：衬线字标 + 轻量创建按钮）----
     rep(dv,

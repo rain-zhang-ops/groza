@@ -50,7 +50,7 @@
   const countMode = ref(false);
 
   useHead({
-    title: () => (countMode.value ? "Groza | 盘点" : "Groza | 物品台账"),
+    title: () => (countMode.value ? "Groza | 盘点" : "Groza | 台账"),
   });
 
   type Row = {
@@ -2079,7 +2079,7 @@
       <!-- 顶栏 -->
       <header class="mb-6">
         <div class="flex flex-wrap items-center gap-2">
-          <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">{{ countMode ? "盘点" : "物品台账" }}</h1>
+          <h1 class="font-display text-xl font-medium tracking-tight md:text-2xl">{{ countMode ? "盘点" : "台账" }}</h1>
           <span :class="badgeCls">{{ filtered.length }} 款</span>
           <span :class="badgeCls">共 {{ Math.round(anim.qty) }} 件</span>
           <button v-if="totals.low || onlyLow" class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition active:scale-95" :class="onlyLow ? 'bg-amber-500 text-white' : 'bg-amber-500/15 text-amber-600'" @click="onlyLow = !onlyLow">
@@ -2946,7 +2946,7 @@
               <input v-else-if="f.type === 'boolean'" v-model="f.value" type="checkbox" class="h-5 w-5 accent-primary" />
               <span v-else class="text-xs text-muted-foreground">{{ f.value }}</span>
             </label>
-            <div v-if="!fieldsDraft.length" class="py-4 text-center text-sm text-muted-foreground">该物品暂无自定义字段（可在 系统 → 库存架构 添加）</div>
+            <div v-if="!fieldsDraft.length" class="py-4 text-center text-sm text-muted-foreground">该物品暂无自定义字段（可在 系统 → 架构 添加）</div>
           </div>
           <div class="mt-3 flex gap-2">
             <button :class="[btnGhost, 'flex-1 justify-center py-2.5 text-base']" @click="fieldsOpen = false">取消</button>

@@ -103,7 +103,7 @@
             隐藏 0 项
           </button>
           <button :class="btnGhost" @click="load"><MdiRefresh class="h-4 w-4" /> 刷新</button>
-          <NuxtLink to="/ledger" :class="btnPrimary">物品台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnPrimary">台账</NuxtLink>
         </div>
       </header>
 
@@ -126,7 +126,7 @@
           </button>
         </section>
         <p class="mt-2 text-xs text-muted-foreground">
-          点卡片直达物品台账对应筛选，可批量处理（差异预览→确认）并可撤销。
+          点卡片直达台账对应筛选，可批量处理（差异预览→确认）并可撤销。
           <template v-if="hiddenCount > 0">已隐藏 {{ hiddenCount }} 个无待办分类。</template>
         </p>
       </template>

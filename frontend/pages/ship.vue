@@ -189,7 +189,7 @@
         <span v-if="counts.pending" class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium tabular-nums text-amber-600">待发 {{ counts.pending }}</span>
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/outbound" :class="btnGhost">出库</NuxtLink>
-          <NuxtLink to="/ledger" :class="btnGhost">物品台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
           <button :class="btnPrimary" @click="openCreate">新建发货单</button>
         </div>
       </header>

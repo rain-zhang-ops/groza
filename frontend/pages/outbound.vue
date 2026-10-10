@@ -271,7 +271,7 @@
         <div class="ml-auto flex flex-wrap items-center gap-2">
           <NuxtLink to="/intake" :class="btnGhost">入库</NuxtLink>
           <NuxtLink to="/ship" :class="btnGhost">发货</NuxtLink>
-          <NuxtLink to="/ledger" :class="btnGhost">物品台账</NuxtLink>
+          <NuxtLink to="/ledger" :class="btnGhost">台账</NuxtLink>
         </div>
 
       </header>
@@ -313,7 +313,7 @@
           </div>
           <template v-else>
             <div v-if="!rows.length" :class="emptyCls">
-              暂无物品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">物品台账</NuxtLink> 新增
+              暂无物品，先到 <NuxtLink to="/ledger" class="text-primary underline underline-offset-2">台账</NuxtLink> 新增
             </div>
             <div v-else class="mt-2 max-h-[46vh] space-y-1 overflow-auto">
               <div
