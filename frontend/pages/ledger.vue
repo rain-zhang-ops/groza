@@ -1454,7 +1454,9 @@
     return true;
   }
   async function setPrice(r: Row, which: "purchase" | "sell") {
-    const v = num(which === "purchase" ? r.purchase : r.sell);
+    let v = num(which === "purchase" ? r.purchase : r.sell);
+    if (v != null) v = Math.round(v); // 后端字段为整数存储，小数会被截断
+    if (which === "purchase") r.purchase = v; else r.sell = v;
     const prev = preEdit[r.id]?.[which];
     const ok = await putFields(r, { [which === "purchase" ? "进价" : "售价"]: v ?? 0 });
     if (ok) { r[which] = v; markSaved(r.id); recordUndo(which === "purchase" ? "进价" : "售价", [{ row: r, field: which, prev }]); flash("已保存价格"); }
@@ -2573,10 +2575,10 @@
                 </td>
               </template>
               <td v-if="cols.purchase" :class="cellPad">
-                <input v-model.number="r.purchase" inputmode="decimal" type="number" step="0.01" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
+                <input v-model.number="r.purchase" inputmode="numeric" type="number" step="1" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'purchase')" />
               </td>
               <td v-if="cols.sell" :class="cellPad">
-                <input v-model.number="r.sell" inputmode="decimal" type="number" step="0.01" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'sell')" />
+                <input v-model.number="r.sell" inputmode="numeric" type="number" step="1" class="w-20 text-right tabular-nums" :class="cellInput" :disabled="countMode" @focus="snapshot(r)" @change="setPrice(r,'sell')" />
               </td>
               <td :class="cellPad">
                 <div class="flex items-center justify-center gap-1">

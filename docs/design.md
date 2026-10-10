@@ -648,3 +648,8 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **前端 7 项**：① 离线队列补 X-Tenant（入队记集合、重放带头，修复跨集合写错库）+ flushAll in-flight 锁 + 4xx 丢弃 toast 并进死信键；② ledger 自建裸 WS 全删，统一接 use-server-events（tenant/退避/online/bfcache 全覆盖），wsOk 接 serverEventsConnected 共享 ref；③ 抑制窗口不再丢事件：窗口内标 pendingRefresh，6s 后补刷一次；④ 数量/undo/批量删除失败全部回滚本地态；⑤ 改名从全量 PUT 改「GET 最新→合并 name→PUT」（上游 PATCH 无 Name 字段，顺带修了改名清空资产号/库位的隐患）；⑥ trash2 前端迁增量 mark 端点，applyAgg 重建 trashed（他端恢复本端即同步）；⑦ 数量输入改非受控 `:value+@change`，修复 hideSoldOut 下输入 0 行被卸载导致修改静默丢失。
 - **验证**：HTTP 级——10 路并发出库库存精确 100→90→（回滚）→100；同幂等键双发只落一单只加一次；trash2 mark/unmark 往返正确。UI 级——台账渲染、WS 指示灯已连接、数量 +1/−1 恢复、标记删除/恢复全过。冒烟全绿。
 - **记账（未做）**：付费 AI 端点无限流；上游 /entities PUT 改数无审计；聚合接口 N+1；入库落盘失败的补偿（回滚价格字段）未做；ai-cache 无 GC。
+
+#### 29 补：全链路回归与价格存储对齐
+- 架构手术后的业务回归（verify_flows.py）：入库→回滚、出库→回滚、发货建单（不扣库存）→确认发货（扣）→撤销（加回）、盘点绝对值改数、配置版本递增、ui-options 往返、审计覆盖，全绿。
+- 改名链路 e2e（verify_rename.py）：改名称后数量/库位/价格不被吞（GET 合并再 PUT 生效）。
+- 价格小数静默截断修复：后端数字字段 int 存储（ledgerToNumber），前端价格输入曾允许 0.01 步进——12.99 存成 12。改为 step=1 + 提交时 Math.round 对齐存储精度。
