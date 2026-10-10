@@ -124,7 +124,7 @@ const inputCls = "rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-
 
 ## 10. Do / Don't
 
-**Do**：用 token 色值；`tabular-nums` 管数字；hover 只改底色；新页从 §3 模板复制。配置页：密集列表用「紧凑行（名称+类型徽章+开关摘要）+ 点击手风琴展开编辑（单开）」；低频分区用 `details+summary` 默认折叠，summary 右侧带当前值预览（见字段页）。
+**Do**：用 token 色值；`tabular-nums` 管数字；hover 只改底色；新页从 §3 模板复制。配置页：密集列表用「行内直编」（名称/类型/高频开关 chip 直接点，实心=开；低频项收进「⌄」展开区，多开）——不要把高频操作藏进手风琴；低频分区用 `details+summary` 默认折叠，summary 右侧带当前值预览；有未保存修改时保存按钮带 amber 圆点（见字段页）。
 **Don't**：不用 `shadow` 于静态卡片；不用 `red-*`/`blue-*` 裸色；衬线不加粗；不新增居中表单弹窗；不在页头放超过 5 个按钮。
 
 ## 11. 交互标准（Interaction）

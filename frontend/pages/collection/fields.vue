@@ -55,13 +55,16 @@
   const isOwner = ref(true);
   const builtKeys = ref<Set<string>>(new Set());
   const confirmDlg = ref<{ text: string; action: () => void } | null>(null);
-  const expanded = ref("");
+  const more = ref<string[]>([]);
+  const lastSaved = ref("");
 
-  function typeLabel(v: string): string { return TYPES.find(t => t.v === v)?.label || v; }
-  function flagsOf(a: any): string {
-    return [a.required && "必填", a.show_column && "列", a.filterable && "筛", a.sortable && "序", a.unit].filter(Boolean).join(" · ");
+  const dirty = computed(() => lastSaved.value !== "" && JSON.stringify(cfg) !== lastSaved.value);
+  function snapshot() { lastSaved.value = JSON.stringify(cfg); }
+  function toggleMore(k: string) {
+    const i = more.value.indexOf(k);
+    if (i >= 0) more.value.splice(i, 1); else more.value.push(k);
   }
-  function toggleAttr(a: any) { expanded.value = expanded.value === a.key ? "" : a.key; }
+  function openMore(k: string) { if (!more.value.includes(k)) more.value.push(k); }
 
   async function loadMe() {
     try { const m = await $fetch<Record<string, any>>("/api/v1/gx/me"); isOwner.value = !!m.isOwner; } catch (_e) { /* ignore */ }
@@ -105,6 +108,7 @@
       cfg.organization = { ...JSON.parse(JSON.stringify(DEFAULT.organization)), ...(cfg.organization || {}) };
       cfg.location = { ...JSON.parse(JSON.stringify(DEFAULT.location)), ...(cfg.location || {}), shelf: { ...DEFAULT.location.shelf, ...((cfg.location || {}).shelf || {}) } };
       builtKeys.value = new Set((cfg.attributes || []).map((a: any) => a.key));
+      snapshot();
     } catch (e) { err.value = "加载失败：" + ((e as Error)?.message ?? String(e)); }
     finally { loading.value = false; }
   }
@@ -112,13 +116,16 @@
   function addAttr() {
     const k = genKey();
     cfg.attributes.push({ key: k, name: "", type: "text", required: false, show_column: true, filterable: true, sortable: false, unit: null, options: [] });
-    expanded.value = k;
+    openMore(k);
   }
   function delAttr(i: number) {
     const a = cfg.attributes[i];
     confirmDlg.value = {
       text: `删除字段「${a?.name || a?.key || "未命名"}」？存量物品将失去该字段映射（保存后生效）。`,
-      action: () => { if (expanded.value === a?.key) expanded.value = ""; cfg.attributes.splice(i, 1); },
+      action: () => {
+        const mi = more.value.indexOf(a?.key); if (mi >= 0) more.value.splice(mi, 1);
+        cfg.attributes.splice(i, 1);
+      },
     };
   }
   function moveAttr(i: number, d: number) {
@@ -163,6 +170,7 @@
       const r = await $fetch<any>("/api/v1/gx/config", { method: "PUT", body: clean });
       Object.assign(cfg, clean); cfg.version = r?.version ?? cfg.version;
       builtKeys.value = new Set(clean.attributes.map((a: any) => a.key));
+      snapshot();
       toast.success("配置已保存（版本 " + (r?.version ?? "?") + "）");
     } catch (e) { toast.error("保存失败：" + ((e as Error)?.message ?? String(e))); }
     finally { saving.value = false; }
@@ -177,7 +185,7 @@
   <div class="space-y-3">
     <Teleport to="#collection-header-actions" defer>
       <button :class="[btnGhost, 'active:scale-95']" :disabled="saving || !isOwner" @click="askResetDefault"><MdiRestore class="size-4" /> 默认</button>
-      <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving || !isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}</button>
+      <button :class="[btnPrimary, 'active:scale-95']" :disabled="saving || !isOwner" @click="save">{{ saving ? "保存中…" : "保存" }}<span v-if="dirty" class="ml-1 inline-block size-1.5 rounded-full bg-amber-400 align-middle" title="有未保存修改"></span></button>
     </Teleport>
 
     <div v-if="!isOwner" class="rounded-xl bg-amber-500/15 p-3 text-sm text-amber-600">仅管理员（owner）可修改字段。</div>
@@ -187,45 +195,50 @@
       <div v-for="i in 5" :key="i" :class="skeletonCls"></div>
     </div>
     <template v-else>
-      <!-- 字段：紧凑行 + 手风琴展开编辑 -->
+      <!-- 字段：行内直接编辑（名称/类型/开关 chip），低频项收进 ⋮ -->
       <section class="overflow-hidden rounded-xl border bg-card">
         <div class="flex items-center justify-between border-b px-4 py-3">
           <span class="text-sm font-semibold">字段（{{ cfg.attributes.length }}）</span>
           <button :class="[btnGhost, 'active:scale-95']" @click="addAttr"><MdiPlus class="size-4" /> 添加字段</button>
         </div>
         <div v-if="!cfg.attributes.length" class="p-4 text-center text-sm text-muted-foreground">还没有字段，点「添加字段」。</div>
-        <div v-for="(a, i) in cfg.attributes" :key="a.key || i" class="border-b last:border-b-0">
-          <button type="button" class="flex w-full items-center gap-2 px-4 py-2.5 text-left transition hover:bg-muted/40" @click="toggleAttr(a)">
-            <span class="min-w-0 flex-1 truncate text-sm font-medium" :class="{ 'text-muted-foreground': !a.name }">{{ a.name || "未命名" }}</span>
-            <span class="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{{ typeLabel(a.type) }}</span>
-            <span class="hidden shrink-0 text-xs text-muted-foreground sm:block">{{ flagsOf(a) }}</span>
-            <MdiChevronDown class="size-4 shrink-0 text-muted-foreground transition-transform" :class="expanded === a.key && 'rotate-180'" />
-          </button>
-          <div v-if="expanded === a.key" class="space-y-2 border-t bg-muted/30 p-3">
-            <div class="flex items-center gap-2">
-              <input v-model="a.name" :class="[inputCls, 'min-w-0 flex-1 text-base']" placeholder="名称（如 品牌）" />
-              <select v-model="a.type" :class="[inputCls, 'h-10 w-24 shrink-0 text-base']">
-                <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.label }}</option>
-              </select>
-            </div>
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-              <label class="flex items-center gap-1.5"><input v-model="a.required" type="checkbox" class="size-4 accent-primary" /> 必填</label>
-              <label class="flex items-center gap-1.5"><input v-model="a.show_column" type="checkbox" class="size-4 accent-primary" /> 显示列</label>
-              <label class="flex items-center gap-1.5"><input v-model="a.filterable" type="checkbox" class="size-4 accent-primary" /> 可筛选</label>
-              <label class="flex items-center gap-1.5"><input v-model="a.sortable" type="checkbox" class="size-4 accent-primary" /> 可排序</label>
-              <label class="flex items-center gap-1.5 text-muted-foreground">单位 <input v-model="a.unit" :class="[inputCls, 'h-9 w-16 text-base']" placeholder="元" /></label>
-            </div>
+        <div v-for="(a, i) in cfg.attributes" :key="a.key || i" class="border-b px-3 py-2.5 last:border-b-0">
+          <div class="flex items-center gap-2">
+            <input v-model="a.name" :class="[inputCls, 'h-9 min-w-0 flex-1 text-base']" placeholder="字段名（如 品牌）" />
+            <select
+              v-model="a.type"
+              :class="[inputCls, 'h-9 w-20 shrink-0 text-base sm:w-24']"
+              @change="(a.type === 'select' || a.type === 'multiselect') && openMore(a.key)"
+            >
+              <option v-for="t in TYPES" :key="t.v" :value="t.v">{{ t.label }}</option>
+            </select>
+            <button
+              type="button"
+              class="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95"
+              :title="more.includes(a.key) ? '收起' : '更多（单位/选项/键/排序/删除）'"
+              @click="toggleMore(a.key)"
+            ><MdiChevronDown class="size-4 transition-transform" :class="more.includes(a.key) && 'rotate-180'" /></button>
+          </div>
+          <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <button type="button" class="rounded-full border px-2.5 py-1 text-xs transition active:scale-95" :class="a.required ? 'border-primary bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'" @click="a.required = !a.required">必填</button>
+            <button type="button" class="rounded-full border px-2.5 py-1 text-xs transition active:scale-95" :class="a.show_column ? 'border-primary bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'" @click="a.show_column = !a.show_column">显示列</button>
+            <button type="button" class="rounded-full border px-2.5 py-1 text-xs transition active:scale-95" :class="a.filterable ? 'border-primary bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'" @click="a.filterable = !a.filterable">筛选</button>
+            <button type="button" class="rounded-full border px-2.5 py-1 text-xs transition active:scale-95" :class="a.sortable ? 'border-primary bg-primary font-medium text-primary-foreground' : 'text-muted-foreground hover:bg-muted'" @click="a.sortable = !a.sortable">排序</button>
+            <span v-if="a.unit" class="text-xs text-muted-foreground">单位 {{ a.unit }}</span>
+            <span v-if="(a.type === 'select' || a.type === 'multiselect') && (a.options || []).filter(Boolean).length" class="min-w-0 truncate text-xs text-muted-foreground">{{ (a.options || []).filter(Boolean).join(" / ") }}</span>
+          </div>
+          <div v-if="more.includes(a.key)" class="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
             <div v-if="a.type === 'select' || a.type === 'multiselect'" class="flex items-center gap-2">
               <span class="shrink-0 text-xs text-muted-foreground">选项</span>
-              <input :value="(a.options || []).join(' / ')" :class="[inputCls, 'h-10 min-w-0 flex-1 text-base']" placeholder="用 / 分隔，如 A4 / A5 / B5" @input="a.options = ($event.target as HTMLInputElement).value.split('/').map(s => s.trim())" />
+              <input :value="(a.options || []).join(' / ')" :class="[inputCls, 'h-9 min-w-0 flex-1 text-base']" placeholder="用 / 分隔，如 A4 / A5 / B5" @input="a.options = ($event.target as HTMLInputElement).value.split('/').map(s => s.trim())" />
             </div>
-            <div class="flex items-center gap-2 pt-1">
-              <span class="text-xs text-muted-foreground">键</span>
-              <input v-model="a.key" :disabled="builtKeys.has(a.key)" title="键是稳定标识，建成后别改" :class="[inputCls, 'h-9 w-32 font-mono text-xs disabled:opacity-50']" />
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <label class="flex items-center gap-1.5 text-xs text-muted-foreground">单位 <input v-model="a.unit" :class="[inputCls, 'h-8 w-14 text-sm']" placeholder="元" /></label>
+              <label class="flex items-center gap-1.5 text-xs text-muted-foreground">键 <input v-model="a.key" :disabled="builtKeys.has(a.key)" title="键是稳定标识，建成后别改" :class="[inputCls, 'h-8 w-28 font-mono text-xs disabled:opacity-50']" /></label>
               <div class="ml-auto flex items-center gap-1">
-                <button class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveAttr(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
-                <button class="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition hover:bg-muted active:scale-95 disabled:opacity-40" :disabled="i === cfg.attributes.length - 1" title="下移" @click="moveAttr(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
-                <button class="grid h-9 w-9 place-items-center rounded-lg text-destructive/70 transition hover:bg-destructive/10 hover:text-destructive active:scale-95" title="删除" @click="delAttr(i)"><MdiDelete class="h-4 w-4" /></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-background active:scale-95 disabled:opacity-40" :disabled="i === 0" title="上移" @click="moveAttr(i, -1)"><MdiArrowUp class="h-4 w-4" /></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-background active:scale-95 disabled:opacity-40" :disabled="i === cfg.attributes.length - 1" title="下移" @click="moveAttr(i, 1)"><MdiArrowDown class="h-4 w-4" /></button>
+                <button class="grid h-8 w-8 place-items-center rounded-lg text-destructive/70 transition hover:bg-destructive/10 hover:text-destructive active:scale-95" title="删除" @click="delAttr(i)"><MdiDelete class="h-4 w-4" /></button>
               </div>
             </div>
           </div>
@@ -359,7 +372,7 @@
         </summary>
         <ul class="list-disc space-y-1 border-t p-4 pl-8 text-sm text-muted-foreground">
           <li>这里配置库存的信息模型：字段 / 位置 / 媒体 / 组织 / 权限。台账与 AI 按此渲染。</li>
-          <li><b>字段</b>：物品的自定义字段，可配名称 / 类型 / 必填 / 显示列 / 筛选 / 排序 / 单位 / 选项。<b>键</b>是稳定标识，建成后别改。</li>
+          <li><b>字段</b>：行内直接改名称 / 类型 / 开关；点行尾「⌄」展开低频项（选项 / 单位 / 键 / 排序 / 删除）。<b>键</b>是稳定标识，建成后别改。</li>
           <li><b>位置</b>：分类维度名（如 品牌）与库位规则（可重复，不做唯一约束）。</li>
           <li><b>媒体</b>：图片槽位（正面/反面/细节/包装），封面槽用于列表缩略图。</li>
           <li><b>组织</b>：标签体系、系列派生规则。</li>
