@@ -619,3 +619,10 @@ PATCH /items/{id}  { "version": 7, "attributes": { "purchase": 18, "color": "蓝
 - **⌘K 命令面板**（上游 QuickMenuModal 改造）：① Ctrl 热键补 `|| (key.ctrl && event.metaKey)` —— Mac ⌘K 之前无效；② quickMenuActions 整段重写贴合 Groza IA：置顶「新增物品 →/ledger?add=1」「AI 新增（拍照识别）→/ledger?ai=1」直达动作（ledger 新增 applyActionQuery：消费参数开抽屉后 router.replace 清 URL），导航项由新 nav 数组自动派生（含配置/管理全组）；③ 创建组空时隐藏分组标题；④ 废弃历史块 cmdk-nav-children（锚点被整段替换覆盖）。ledger.vue 侧实现 ?add/?ai 消费逻辑。
 - **手势盘点**（存量功能回归验证）：移动端卡片左滑吸附揭示 −/+/拍照（touch 方向锁，snap -150px）、长按 550ms 进多选（震动反馈）、卡片按钮为同名可见入口（HIG：手势必须有可见替代）。
 - **验证**：桌面首批 30 行→滚底 60 行、无分页条；Ctrl+K 与 ⌘K 均开面板、面板直达新增抽屉；左滑吸附/滑出 +1（20→21，测后恢复）/长按多选全过。
+
+### 侧栏收敛：配置+管理合并「系统」+ 页脚用户条（26）
+- **合并**：配置（库存架构/选项/标签/分类/结构）与管理（成员/邀请/通知/集合设置/工具）合并为单组「系统」（10 项，数据形态在前、组织管理居中、集合设置/工具殿后）。组序列：概览（1)/库存（2)/进出（3)/系统（10)。
+- **「我的」入口下沉**：nav 末尾的「我的」项移除，由页脚用户条承接（用户名即 /profile 链接，当前页高亮 bg-accent）——导航区只留业务，账号区固定底部，消除同目的地双入口。
+- **登出按钮换位**：SidebarFooter 的全宽大按钮（折叠态甚至是 destructive 红块）改为 Claude/Codex 式安静页脚——`[头像图标+用户名(→/profile)] [32px 登出小图标]`，登出默认 muted、hover 才显 destructive 色；tooltip/aria 保留（data-testid 不变，旧测试兼容）。
+- **实现**：patch_upstream.py nav_body 组名 replace_all（配置/管理→系统）+ 删 profile 项；nav-restructure 幂等 skip 条件改 `group: "系统"`（splice 路径对 pristine 与旧补丁态均成立）；sidebar-footer-user-chip rep 块替换整段 SidebarFooter。
+- **验证**：桌面/iPhone 抽屉组标签=[概览,库存,进出,系统]、无「我的」nav 项、系统组 10 项齐、页脚文本=用户名、登出按钮 32×32、点用户条 →/profile。

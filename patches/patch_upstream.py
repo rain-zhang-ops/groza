@@ -785,80 +785,73 @@ def main():
         '    },\n'
         '    {\n'
         '      icon: MdiTune,\n'
-        '      id: 9061, group: "配置",\n'
+        '      id: 9061, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/fields"),\n'
         '      name: computed(() => "库存架构"),\n'
         '      to: "/collection/fields",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiFormatListBulleted,\n'
-        '      id: 9062, group: "配置",\n'
+        '      id: 9062, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/ui-options"),\n'
         '      name: computed(() => "选项"),\n'
         '      to: "/collection/ui-options",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiTagMultiple,\n'
-        '      id: 9063, group: "配置",\n'
+        '      id: 9063, group: "系统",\n'
         '      active: computed(() => route.path === "/tags"),\n'
         '      name: computed(() => "标签"),\n'
         '      to: "/tags",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiFileTree,\n'
-        '      id: 9064, group: "配置",\n'
+        '      id: 9064, group: "系统",\n'
         '      active: computed(() => route.path === "/locations"),\n'
         '      name: computed(() => "分类"),\n'
         '      to: "/locations",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiShapeOutline,\n'
-        '      id: 9081, group: "配置",\n'
+        '      id: 9081, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/entity-types"),\n'
         '      name: computed(() => "结构"),\n'
         '      to: "/collection/entity-types",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiAccountMultipleOutline,\n'
-        '      id: 61, group: "管理",\n'
+        '      id: 61, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/members"),\n'
         '      name: computed(() => t("collection.tabs.members")),\n'
         '      to: "/collection/members",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiEmailOutline,\n'
-        '      id: 62, group: "管理",\n'
+        '      id: 62, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/invites"),\n'
         '      name: computed(() => t("collection.tabs.invites")),\n'
         '      to: "/collection/invites",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiBellOutline,\n'
-        '      id: 63, group: "管理",\n'
+        '      id: 63, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/notifiers"),\n'
         '      name: computed(() => t("collection.tabs.notifiers")),\n'
         '      to: "/collection/notifiers",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiCog,\n'
-        '      id: 64, group: "管理",\n'
+        '      id: 64, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/settings"),\n'
         '      name: computed(() => t("collection.tabs.settings")),\n'
         '      to: "/collection/settings",\n'
         '    },\n'
         '    {\n'
         '      icon: MdiWrench,\n'
-        '      id: 9082, group: "管理",\n'
+        '      id: 9082, group: "系统",\n'
         '      active: computed(() => route.path === "/collection/tools"),\n'
         '      name: computed(() => "工具"),\n'
         '      to: "/collection/tools",\n'
-        '    },\n'
-        '    {\n'
-        '      icon: MdiAccount,\n'
-        '      id: 6, group: "",\n'
-        '      active: computed(() => route.path === "/profile"),\n'
-        '      name: computed(() => t("menu.profile")),\n'
-        '      to: "/profile",\n'
         '    },\n'
     )
     rep(dv,
@@ -953,7 +946,7 @@ def main():
         '        </SidebarContent>'
     )
     s_nav = open(dv, encoding="utf-8").read()
-    if 'id: 9064' in s_nav and "navGroups" in s_nav:
+    if 'group: "系统"' in s_nav and "navGroups" in s_nav:
         skip("nav-restructure")
     else:
         marker = "  }[] = ["
@@ -996,6 +989,11 @@ def main():
         'class="flex justify-center bg-primary text-primary-foreground drop-shadow-md hover:bg-primary/90 active:bg-primary/90 active:text-primary-foreground group-data-[collapsible=icon]:justify-start"',
         'class="h-9 w-full justify-start gap-2 border border-input bg-background hover:bg-accent"',
         "sidebar-create-btn")
+    # 页脚：全宽登出按钮 → 用户条（用户名→/profile）+ 小号登出图标按钮（Claude/Codex 式安静页脚）
+    rep(dv,
+        '        <SidebarFooter>\n          <SidebarMenuButton\n            class="flex justify-center group-data-[collapsible=icon]:justify-start group-data-[collapsible=icon]:bg-destructive group-data-[collapsible=icon]:text-destructive-foreground group-data-[collapsible=icon]:shadow-sm group-data-[collapsible=icon]:hover:bg-destructive/90"\n            :tooltip="$t(\'global.sign_out\')"\n            data-testid="logout-button"\n            @click="logout"\n          >\n            <MdiLogout />\n            <span>\n              {{ $t("global.sign_out") }}\n            </span>\n          </SidebarMenuButton>\n        </SidebarFooter>',
+        '        <SidebarFooter>\n          <div class="flex items-center gap-1 group-data-[collapsible=icon]:justify-center">\n            <NuxtLink\n              to="/profile"\n              class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground group-data-[collapsible=icon]:hidden"\n              :class="{ \'bg-accent text-foreground\': route.path === \'/profile\' }"\n            >\n              <MdiAccount class="h-5 w-5 shrink-0" />\n              <span class="truncate">{{ username }}</span>\n            </NuxtLink>\n            <button\n              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"\n              :title="$t(\'global.sign_out\')"\n              data-testid="logout-button"\n              @click="logout"\n            >\n              <MdiLogout class="h-4 w-4" />\n            </button>\n          </div>\n        </SidebarFooter>',
+        "sidebar-footer-user-chip")
     # 移动顶栏：去投影改发丝线
     rep(dv,
         'flex-col bg-secondary p-2 shadow-md sm:h-[var(--header-height)]',
